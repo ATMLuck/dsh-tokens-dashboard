@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/dsh-session": "*",
     "@deepseek-ai/dsh-tools": "^0.0.1-rc.1",
     "@deepseek-ai/schemastery": "^3.18.5",
     "@types/node": "^24.0.0",

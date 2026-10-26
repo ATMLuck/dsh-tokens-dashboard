@@ -108,14 +108,16 @@ export function parseUsageJsonl(text: string): ParsedLog {
  * `onError`.
  */
 export class UsageStore {
+  readonly filePath: string
+  private readonly onError: (error: unknown) => void
   private readonly records: UsageRecord[] = []
   private queue: Promise<void> = Promise.resolve()
   private closed = false
 
-  constructor(
-    readonly filePath: string,
-    private readonly onError: (error: unknown) => void = () => {},
-  ) {}
+  constructor(filePath: string, onError: (error: unknown) => void = () => {}) {
+    this.filePath = filePath
+    this.onError = onError
+  }
 
   /** Load existing records; tolerant of a missing or partially corrupt file. */
   async load(): Promise<void> {
