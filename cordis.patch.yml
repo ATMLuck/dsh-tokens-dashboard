@@ -1,0 +1,7 @@
+# dsh-tokens-dashboard bundle patch: inserts the plugin row into any profile
+# that lists this bundle. Rows are addressed by id so later layers
+# (profile cordis.patch.yml, home patch, --patch overlays) can override the
+# whole config block by restating every key.
+- insert:
+    - id: tokens-dashboard
+      name: dsh-tokens-dashboard

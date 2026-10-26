@@ -1,0 +1,33 @@
+{
+  "name": "dsh-tokens-dashboard",
+  "version": "0.1.0",
+  "description": "DeepSeek Harness plugin: per-model daily token usage dashboard with summary cards, line chart and pie chart",
+  "type": "module",
+  "main": "src/index.ts",
+  "license": "MIT",
+  "files": [
+    "src",
+    "cordis.patch.yml"
+  ],
+  "scripts": {
+    "test": "node --test tests/aggregate.test.ts tests/charts.test.ts tests/usage-store.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.5",
+    "@deepseek-ai/dsh-tools": ">=0.0.1-rc.1",
+    "@deepseek-ai/schemastery": ">=3.18.5"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/dsh-tools": "^0.0.1-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.5",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.0"
+  }
+}
