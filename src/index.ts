@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { registerUsageCommand } from './command.ts'
 import { Config, resolveDataDir, type PluginConfig } from './config.ts'
+import { DashboardServer } from './dashboard-server.ts'
 import { LiveDashboard } from './live-dashboard.ts'
 import { attachRecorder } from './recorder.ts'
 import { registerUsageTool } from './tool.ts'
@@ -31,25 +32,43 @@ export function apply(ctx: Context, config: PluginConfig): void {
     chartDays: config.chartDays,
     onError: reportError('dashboard rebuild'),
   })
+  const server = new DashboardServer(store, {
+    pricing: config.pricing,
+    chartDays: config.chartDays,
+    port: config.dashboardPort,
+    onError: reportError('dashboard server'),
+  })
 
-  // Store and dashboard are effects: loaded on activation, flushed and
-  // closed on unload (including HMR), so no writer outlives the plugin.
+  // Store, dashboard and server are effects: loaded on activation, flushed
+  // and closed on unload (including HMR), so no writer or listener outlives
+  // the plugin.
   ctx.effect(() => {
     void store.load()
+    if (config.dashboardServer) {
+      void server
+        .listen()
+        .then(() => {
+          if (server.url !== undefined) console.log(`[tokens-dashboard] live dashboard at ${server.url}`)
+        })
+        .catch(onError)
+    }
     return async () => {
       dashboard.dispose()
       await dashboard.flush().catch(onError)
+      await server.close().catch(onError)
       await store.close()
     }
   })
 
   // New usage lands in the JSONL and triggers a debounced dashboard rebuild,
-  // so a browser polling the file always shows up-to-date totals.
+  // so both the file snapshot and the loopback server always read current
+  // totals.
   attachRecorder(ctx, store, () => dashboard.schedule())
   registerUsageTool(ctx, store, config.pricing)
   registerUsageCommand(ctx, store, {
     pricing: config.pricing,
     openAfterRender: config.openAfterRender,
     dashboard,
+    server,
   })
 }

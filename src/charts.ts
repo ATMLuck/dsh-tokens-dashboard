@@ -140,6 +140,7 @@ export function renderStackedAreaSVG(options: StackedAreaOptions): string {
 
   // Stacked areas (or bars for a single-day window).
   let cumulative = new Array<number>(stackCount).fill(0)
+  const stackTops: number[][] = []
   for (let i = 0; i < series.length; i++) {
     const s = series[i]
     if (s === undefined) continue
@@ -147,6 +148,7 @@ export function renderStackedAreaSVG(options: StackedAreaOptions): string {
     const lower = [...cumulative]
     const upper = s.values.map((v, j) => (lower[j] ?? 0) + (v ?? 0))
     cumulative = upper
+    stackTops.push(upper)
     if (n === 1) {
       const barW = Math.min(48, plotW / 2)
       const x0 = xAt(0) - barW / 2
@@ -158,14 +160,36 @@ export function renderStackedAreaSVG(options: StackedAreaOptions): string {
           `<title>${escapeXml(s.label)} · ${escapeXml(days[0] ?? '')}: ${escapeXml(formatTokens(s.values[0] ?? 0))}</title></rect>`,
       )
     } else if (n > 1) {
+      // <path d>, not <polygon points>: the M/L grammar is invalid inside
+      // the points attribute and browsers drop the whole shape.
       const top = upper.map((v, j) => `${xAt(j).toFixed(1)},${yAt(v).toFixed(1)}`).join(' L ')
       const bottom = lower
         .map((v, j) => `${xAt(j).toFixed(1)},${yAt(v).toFixed(1)}`)
         .reverse()
         .join(' L ')
       parts.push(
-        `<polygon points="M ${top} L ${bottom} Z" fill="${color}" fill-opacity="0.85">` +
-          `<title>${escapeXml(s.label)}</title></polygon>`,
+        `<path d="M ${top} L ${bottom} Z" fill="${color}" fill-opacity="0.85">` +
+          `<title>${escapeXml(s.label)}</title></path>`,
+      )
+    }
+  }
+
+  // Per-day markers on each layer's top edge (today emphasized) so single
+  // days — especially the trailing one — read as points, not just edges.
+  for (let i = 0; i < series.length; i++) {
+    const s = series[i]
+    const tops = stackTops[i]
+    if (s === undefined || tops === undefined) continue
+    const color = colorFor(i)
+    for (let j = 0; j < stackCount; j++) {
+      const v = s.values[j] ?? 0
+      if (v <= 0) continue
+      const isToday = j === stackCount - 1
+      const radius = isToday ? 3.5 : 2
+      parts.push(
+        `<circle cx="${xAt(j).toFixed(1)}" cy="${yAt(tops[j] ?? 0).toFixed(1)}" r="${radius}" ` +
+          `fill="${color}" stroke="#0f1115" stroke-width="${isToday ? 1.5 : 1}">` +
+          `<title>${escapeXml(s.label)} · ${escapeXml(days[j] ?? '')}: ${escapeXml(formatTokens(v))}</title></circle>`,
       )
     }
   }

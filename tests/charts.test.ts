@@ -29,7 +29,7 @@ test('colorFor cycles the palette deterministically', () => {
   assert.notEqual(colorFor(0), colorFor(1))
 })
 
-test('stacked area chart renders one polygon per series with axes', () => {
+test('stacked area chart renders valid paths and per-day markers', () => {
   const svg = renderStackedAreaSVG({
     days: ['2026-10-25', '2026-10-26', '2026-10-27'],
     series: [
@@ -39,9 +39,15 @@ test('stacked area chart renders one polygon per series with axes', () => {
   })
   assert.ok(svg.startsWith('<svg'))
   assert.ok(svg.endsWith('</svg>'))
-  assert.equal((svg.match(/<polygon/g) ?? []).length, 2)
-  assert.ok(svg.includes('2026-10-25'.slice(5)))
-  assert.ok(svg.includes('</svg>'))
+  // Areas must be <path d> — <polygon points> cannot carry M/L grammar and
+  // browsers drop the whole shape (regression guard).
+  assert.equal((svg.match(/<path d="/g) ?? []).length, 2)
+  assert.ok(!svg.includes('<polygon'))
+  // One marker per non-zero day: a=[1,2,3] → 3, b=[0,1,0] → 1.
+  assert.equal((svg.match(/<circle /g) ?? []).length, 4)
+  // Today (last day) is emphasized with the larger radius.
+  assert.ok(svg.includes('r="3.5"'))
+  assert.ok(svg.includes('2026-10-27'))
 })
 
 test('single-day windows render stacked bars instead of degenerate areas', () => {
@@ -51,6 +57,7 @@ test('single-day windows render stacked bars instead of degenerate areas', () =>
   })
   assert.ok(svg.includes('<rect'))
   assert.ok(!svg.includes('<polygon'))
+  assert.ok(!svg.includes('<path d="'))
 })
 
 test('donut renders slices and a centered total; empty input renders placeholder', () => {

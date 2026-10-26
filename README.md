@@ -5,10 +5,11 @@ DeepSeek Harness (DSH) 的**模型用量仪表盘**插件：自动记录各模�
 ## 功能
 
 - **自动采集**：监听 `session/event`，从每条 `assistant/message` 的 `usage`（TokenUsage）与 `provider/model` 归属累计用量；数据以追加式 JSONL 落盘，可重建聚合，卸载/HMR 时自动冲刷关闭。
-- **实时仪表盘**：每条新用量落盘后自动（防抖）重建 `usage-dashboard.html`；页面内置前台可见性感知的 10 秒自动刷新，打开即始终看到含"今日"在内的最新数据。
+- **DSH 内置预览（推荐）**：插件在 `127.0.0.1` 起一个回环 HTTP 服务，每次请求都实时渲染最新数据；`/usage` 返回该地址的链接，点击即在 **DSH 右侧栏 browser 窗格**（应用内 iframe 预览）中打开——DSH 的浏览器窗格接受 loopback HTTP(S) 目标。若聊天"链接偏好"设置指向系统浏览器，可在 Web Client 设置中改回，或继续使用右侧栏 Guide/browser 手动输入该地址。
+- **实时仪表盘**：每条新用量落盘后自动（防抖）重建 `usage-dashboard.html` 文件快照；页面内置前台可见性感知的 10 秒自动刷新。
 - **`usage_report` 模型工具**：模型可随时调用查询 `today / 7d / 30d / all` 窗口的文本报告（总计、按模型、按日）。
 - **`/usage` 人类命令**：生成独立 HTML 仪表盘（默认自动打开），并在会话中返回文本摘要；支持 `/usage 14` 之类自定义天数窗口。
-- **HTML 仪表盘**：今日/近7天/近30天/累计四张汇总卡片、近 N 天按模型堆叠的每日 token 曲线图、tokens 与费用两张占比环形图、按模型明细表；单文件、内联 SVG、零外部依赖（内联脚本仅做自动刷新）。
+- **HTML 仪表盘**：今日/近7天/近30天/累计四张汇总卡片、近 N 天按模型堆叠的每日 token 曲线图（每个数据日带标记点，今日加重显示）、tokens 与费用两张占比环形图、按模型明细表；单文件、内联 SVG、零外部依赖（内联脚本仅做自动刷新）。
 - **费用估算**：在配置中声明各模型 USD/1M token 定价（支持前缀匹配），仪表盘与报告即带费用；未配置时费用为 0。
 
 ## 环境要求
@@ -41,7 +42,9 @@ dsh plugin --profile demo add dsh-tokens-dashboard
   config:
     # dataDir: 'D:/dsh-data/tokens-dashboard'   # 默认 $DSH_HOME/plugin-data/tokens-dashboard（或 ~/.dsh/...）
     chartDays: 30            # 曲线图窗口（天）
-    openAfterRender: true    # /usage 后自动在浏览器打开
+    dashboardServer: true    # 在 127.0.0.1 提供实时预览（供 DSH 右侧栏 browser 窗格内嵌）
+    dashboardPort: 0         # 0 = 自动选择空闲端口；固定端口便于收藏
+    openAfterRender: false   # true = /usage 后额外调用系统浏览器（默认关闭）
     pricing:                 # USD / 1M tokens，键为精确模型名或前缀
       deepseek-chat:
         input: 0.27

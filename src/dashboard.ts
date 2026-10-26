@@ -186,7 +186,7 @@ export function renderDashboardHTML(data: DashboardData): string {
 </div>
 ${costSection}
 ${tableSection}
-<footer>数据来源：会话 assistant/message 的 usage 事件（dsh-tokens-dashboard 插件采集）；费用基于部署配置的定价估算，仅供参考。页面每 10 秒自动刷新（仅前台标签页），新用量由插件实时重写本文件。</footer>
+<footer>数据来源：会话 assistant/message 的 usage 事件（dsh-tokens-dashboard 插件采集）；费用基于部署配置的定价估算，仅供参考。页面每 10 秒自动刷新（仅前台标签页）；HTTP 预览由插件实时渲染，文件快照由插件实时重写。</footer>
 <script>${RELOAD_SCRIPT}</script>
 </body>
 </html>

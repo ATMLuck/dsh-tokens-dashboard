@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import type { Context } from '@deepseek-ai/cordis'
 import { isPeriod, summarizePeriod } from './aggregate.ts'
+import type { DashboardServer } from './dashboard-server.ts'
 import type { LiveDashboard } from './live-dashboard.ts'
 import { renderPeriodReport } from './report.ts'
 import type { PricingMap } from './types.ts'
@@ -33,14 +34,16 @@ function openInBrowser(path: string): void {
 }
 
 const HELP_TEXT = [
-  '/usage — 生成模型用量仪表盘（HTML，含卡片、曲线图与饼图，实时自动刷新）',
+  '/usage — 打开模型用量仪表盘（卡片、曲线图与饼图，实时刷新）',
   '/usage <窗口> — 窗口可选 today / 7d / 30d / all，或天数（如 /usage 14）',
+  '链接在 DSH 内置预览（右侧栏 browser 窗格）中打开；聊天链接偏好指向系统浏览器时也可在设置中改回。',
 ].join('\n')
 
 export interface CommandOptions {
   pricing: PricingMap
   openAfterRender: boolean
   dashboard: LiveDashboard
+  server: DashboardServer
 }
 
 /**
@@ -60,7 +63,7 @@ export function registerUsageCommand(
   }
   commands.register({
     name: 'usage',
-    description: '模型用量仪表盘：卡片、曲线图与饼图（实时刷新）',
+    description: '模型用量仪表盘：卡片、曲线图与饼图（DSH 内置预览，实时刷新）',
     handler: async ({ rawInput }) => {
       const input = rawInput.trim()
       if (input === 'help' || input === '-h') {
@@ -73,19 +76,29 @@ export function registerUsageCommand(
         return { kind: 'error', text: `未知窗口：${input}（可选 today / 7d / 30d / all 或天数）` }
       }
       const now = Date.now()
-      let outPath: string
+      const lines: string[] = []
+      // Live view for the DSH sidebar browser pane (loopback URL).
+      const liveUrl = options.server.url
+      if (liveUrl !== undefined) {
+        const target = chartDays === undefined ? liveUrl : `${liveUrl}?days=${chartDays}`
+        lines.push(`实时仪表盘：[${target}](${target})`)
+      }
+      // File snapshot with the same window.
+      let outPath: string | undefined
       try {
         outPath = await options.dashboard.rebuild(now, chartDays)
       } catch (error) {
         return { kind: 'error', text: `仪表盘生成失败：${String(error)}` }
       }
-      if (options.openAfterRender) openInBrowser(outPath)
+      if (outPath !== undefined) lines.push(`静态快照：${outPath}`)
+      if (options.openAfterRender && outPath !== undefined) openInBrowser(outPath)
       const period = isPeriod(input) ? input : '30d'
       const summary = summarizePeriod(store.all(), options.pricing, period, now)
       const report = renderPeriodReport(summary, {
         hasPricing: Object.keys(options.pricing).length > 0,
       })
-      return { kind: 'success', text: `仪表盘已生成：${outPath}\n\n${report}` }
+      lines.push('', report)
+      return { kind: 'success', text: lines.join('\n') }
     },
   })
 }
