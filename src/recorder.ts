@@ -7,9 +7,14 @@ import { normalizeObservation, type UsageStore } from './usage-store.ts'
  * `assistant/message` usage into the store. The listener registration is a
  * cordis effect, so it disappears with the calling plugin; recording itself
  * never throws into the harness event loop (IO failures surface through the
- * store's onError).
+ * store's onError). `onRecord` fires after each accepted record (used to
+ * schedule live dashboard rebuilds).
  */
-export function attachRecorder(ctx: Context, store: UsageStore): void {
+export function attachRecorder(
+  ctx: Context,
+  store: UsageStore,
+  onRecord?: () => void,
+): void {
   ctx.on('session/event', (_session, event) => {
     if (event.type !== 'assistant/message') return
     const { message, usage } = event.data
@@ -21,5 +26,6 @@ export function attachRecorder(ctx: Context, store: UsageStore): void {
     })
     if (record === null) return
     store.record(record)
+    onRecord?.()
   })
 }

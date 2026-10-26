@@ -2,6 +2,7 @@ import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { registerUsageCommand } from './command.ts'
 import { Config, resolveDataDir, type PluginConfig } from './config.ts'
+import { LiveDashboard } from './live-dashboard.ts'
 import { attachRecorder } from './recorder.ts'
 import { registerUsageTool } from './tool.ts'
 import { UsageStore } from './usage-store.ts'
@@ -23,23 +24,32 @@ function reportError(context: string): (error: unknown) => void {
 export function apply(ctx: Context, config: PluginConfig): void {
   const onError = reportError('usage store')
   const dataDir = resolveDataDir(config.dataDir)
-  const store: UsageStore = new UsageStore(join(dataDir, 'usage.jsonl'), onError)
+  const store = new UsageStore(join(dataDir, 'usage.jsonl'), onError)
+  const dashboard = new LiveDashboard(store, {
+    dataDir,
+    pricing: config.pricing,
+    chartDays: config.chartDays,
+    onError: reportError('dashboard rebuild'),
+  })
 
-  // The store is an effect: loaded on activation, flushed and closed on
-  // unload (including HMR), so the JSONL never keeps a dangling writer.
+  // Store and dashboard are effects: loaded on activation, flushed and
+  // closed on unload (including HMR), so no writer outlives the plugin.
   ctx.effect(() => {
     void store.load()
-    return () => {
-      void store.close()
+    return async () => {
+      dashboard.dispose()
+      await dashboard.flush().catch(onError)
+      await store.close()
     }
   })
 
-  attachRecorder(ctx, store)
+  // New usage lands in the JSONL and triggers a debounced dashboard rebuild,
+  // so a browser polling the file always shows up-to-date totals.
+  attachRecorder(ctx, store, () => dashboard.schedule())
   registerUsageTool(ctx, store, config.pricing)
   registerUsageCommand(ctx, store, {
     pricing: config.pricing,
-    chartDays: config.chartDays,
     openAfterRender: config.openAfterRender,
-    dataDir,
+    dashboard,
   })
 }

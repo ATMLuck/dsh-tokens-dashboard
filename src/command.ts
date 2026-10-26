@@ -1,9 +1,7 @@
 import { spawn } from 'node:child_process'
-import { writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
-import { buildDashboardData, isPeriod, summarizePeriod } from './aggregate.ts'
-import { renderDashboardHTML } from './dashboard.ts'
+import { isPeriod, summarizePeriod } from './aggregate.ts'
+import type { LiveDashboard } from './live-dashboard.ts'
 import { renderPeriodReport } from './report.ts'
 import type { PricingMap } from './types.ts'
 import type { UsageStore } from './usage-store.ts'
@@ -35,15 +33,14 @@ function openInBrowser(path: string): void {
 }
 
 const HELP_TEXT = [
-  '/usage — 生成模型用量仪表盘（HTML，含卡片、曲线图与饼图）',
+  '/usage — 生成模型用量仪表盘（HTML，含卡片、曲线图与饼图，实时自动刷新）',
   '/usage <窗口> — 窗口可选 today / 7d / 30d / all，或天数（如 /usage 14）',
 ].join('\n')
 
 export interface CommandOptions {
   pricing: PricingMap
-  chartDays: number
   openAfterRender: boolean
-  dataDir: string
+  dashboard: LiveDashboard
 }
 
 /**
@@ -63,22 +60,25 @@ export function registerUsageCommand(
   }
   commands.register({
     name: 'usage',
-    description: '模型用量仪表盘：卡片、曲线图与饼图',
+    description: '模型用量仪表盘：卡片、曲线图与饼图（实时刷新）',
     handler: async ({ rawInput }) => {
       const input = rawInput.trim()
       if (input === 'help' || input === '-h') {
         return { kind: 'success', text: HELP_TEXT }
       }
-      let chartDays = options.chartDays
+      let chartDays: number | undefined
       if (input.length > 0 && /^\d+$/.test(input)) {
         chartDays = Math.min(365, Math.max(1, Number.parseInt(input, 10)))
       } else if (input.length > 0 && !isPeriod(input)) {
         return { kind: 'error', text: `未知窗口：${input}（可选 today / 7d / 30d / all 或天数）` }
       }
       const now = Date.now()
-      const data = buildDashboardData(store.all(), options.pricing, { chartDays, now })
-      const outPath = join(options.dataDir, 'usage-dashboard.html')
-      await writeFile(outPath, renderDashboardHTML(data), 'utf8')
+      let outPath: string
+      try {
+        outPath = await options.dashboard.rebuild(now, chartDays)
+      } catch (error) {
+        return { kind: 'error', text: `仪表盘生成失败：${String(error)}` }
+      }
       if (options.openAfterRender) openInBrowser(outPath)
       const period = isPeriod(input) ? input : '30d'
       const summary = summarizePeriod(store.all(), options.pricing, period, now)

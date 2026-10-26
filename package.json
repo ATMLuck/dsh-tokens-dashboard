@@ -10,7 +10,7 @@
     "cordis.patch.yml"
   ],
   "scripts": {
-    "test": "node --test tests/aggregate.test.ts tests/charts.test.ts tests/usage-store.test.ts",
+    "test": "node --test tests/aggregate.test.ts tests/charts.test.ts tests/live-dashboard.test.ts tests/usage-store.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dsh": {
