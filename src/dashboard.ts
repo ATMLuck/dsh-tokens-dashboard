@@ -38,10 +38,13 @@ const STYLE = `
 .td-dashboard .dot { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 .td-dashboard .legend-item .muted { color: #8b93a7; }
 .td-dashboard table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.td-dashboard th, .td-dashboard td { text-align: right; padding: 6px 10px; border-bottom: 1px solid #232833; white-space: nowrap; }
-.td-dashboard th:first-child, .td-dashboard td:first-child { text-align: left; }
+.td-dashboard th, .td-dashboard td { text-align: right; padding: 6px 8px; border-bottom: 1px solid #232833; white-space: nowrap; }
+.td-dashboard th:first-child, .td-dashboard td:first-child { text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .td-dashboard th { color: #8b93a7; font-weight: 500; }
 .td-dashboard td.model { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+/* Keep a too-wide table inside the settings tab instead of poking out. */
+.td-dashboard .td-tablepanel { overflow-x: auto; }
+.td-dashboard .legend-item { overflow-wrap: anywhere; }
 .td-dashboard .empty { color: #8b93a7; padding: 32px 0; text-align: center; }
 .td-dashboard footer { color: #5b6478; font-size: 11px; margin-top: 8px; }
 .td-dashboard svg { max-width: 100%; height: auto; }
@@ -136,18 +139,20 @@ export function renderDashboardBody(data: DashboardData): string {
         `<td>${escapeHtml(formatInt(model.requests))}</td>` +
         `<td>${escapeHtml(formatTokens(model.inputTokens))}</td>` +
         `<td>${escapeHtml(formatTokens(model.outputTokens))}</td>` +
-        `<td>${escapeHtml(formatTokens(model.cacheReadTokens))}</td>` +
-        `<td>${escapeHtml(formatTokens(model.cacheWriteTokens))}</td>` +
+        `<td>${escapeHtml(formatTokens(model.cacheReadTokens + model.cacheWriteTokens))}</td>` +
         `<td>${escapeHtml(formatTokens(model.totalTokens))}</td>` +
-        `<td>${data.hasPricing ? escapeHtml(formatUsd(model.costUsd)) : '—'}</td></tr>`,
+        (data.hasPricing ? `<td>${escapeHtml(formatUsd(model.costUsd))}</td>` : '') +
+        `</tr>`,
     )
     .join('')
 
   const tableSection = hasModels
-    ? `<div class="panel"><h2>模型明细（近 ${data.windowDaysCount} 天）</h2>` +
-      `<table><thead><tr><th>模型</th><th>请求</th><th>输入(未缓存)</th><th>输出</th>` +
-      `<th>缓存读</th><th>缓存写</th><th>合计</th><th>费用</th></tr></thead>` +
-      `<tbody>${tableRows}</tbody></table></div>`
+    ? `<div class="panel td-tablepanel"><h2>模型明细（近 ${data.windowDaysCount} 天）</h2>` +
+      `<table><thead><tr><th>模型</th><th>请求</th>` +
+      `<th title="未缓存的输入 tokens">输入</th><th>输出</th>` +
+      `<th title="缓存读 + 缓存写">缓存</th><th>合计</th>` +
+      (data.hasPricing ? '<th>费用</th>' : '') +
+      `</tr></thead><tbody>${tableRows}</tbody></table></div>`
     : ''
 
   return (

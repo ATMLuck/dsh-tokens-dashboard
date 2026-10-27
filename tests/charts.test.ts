@@ -129,6 +129,15 @@ test('dashboard body embeds scoped styles, charts and the model table', () => {
   assert.ok(html.includes('模型占比 · 费用'))
   assert.ok(html.includes('deepseek/deepseek-chat'))
   assert.ok(html.includes('近 3 天'))
+  // Compact table: cache columns are merged and cost only shows with pricing.
+  assert.ok(html.includes('>缓存</th>'))
+  assert.ok(!html.includes('<th>缓存读</th>'))
+  assert.ok(!html.includes('<th>缓存写</th>'))
+  assert.ok(html.includes('<td>500</td><td>2.0K</td>'))
+  const noPricingHtml = renderDashboardBody(
+    buildDashboardData([record], {}, { chartDays: 3, now: NOON }),
+  )
+  assert.ok(!noPricingHtml.includes('<th>费用</th>'))
   // The host app owns re-rendering; the fragment must stay script-free.
   assert.ok(!html.includes('<script'))
   // Model ids are HTML-escaped if they ever contain markup.
