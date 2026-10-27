@@ -3,14 +3,19 @@ import { test } from 'node:test'
 import {
   aggregateDays,
   aggregateModels,
+  aggregateWeeks,
   buildCards,
   buildDashboardData,
+  buildHeatmap,
+  cumulateDays,
+  HEATMAP_DAYS,
   isPeriod,
   periodStartTs,
   recordCostUsd,
   recordsInPeriod,
   resolvePricing,
   summarizePeriod,
+  weekAlignCells,
 } from '../src/aggregate.ts'
 import { dayKeyOf, lastDayKeys } from '../src/days.ts'
 import type { UsageRecord } from '../src/types.ts'
@@ -151,4 +156,53 @@ test('isPeriod accepts only known windows', () => {
   assert.ok(isPeriod('all'))
   assert.equal(isPeriod('yesterday'), false)
   assert.equal(isPeriod(42), false)
+})
+
+test('buildHeatmap keeps the trailing year with zero days preserved', () => {
+  const day1 = new Date(2026, 9, 26, 12).getTime()
+  const heatmap = buildHeatmap([recordAt(day1, 'chat'), recordAt(NOON, 'chat')], NOON)
+  assert.equal(heatmap.length, HEATMAP_DAYS)
+  assert.equal(heatmap[heatmap.length - 1]?.date, '2026-10-27')
+  assert.equal(heatmap[heatmap.length - 1]?.tokens, 2000)
+  assert.equal(heatmap[heatmap.length - 1]?.requests, 1)
+  assert.equal(heatmap[heatmap.length - 2]?.tokens, 2000)
+  // Days without records stay in the grid at zero.
+  assert.equal(heatmap[0]?.tokens, 0)
+  assert.equal(heatmap[0]?.date, '2025-10-29')
+})
+
+test('weekly, cumulative and aligned heatmap transforms', () => {
+  // 2026-10-27 is a Tuesday; the week's Monday is 2026-10-26.
+  const monday = new Date(2026, 9, 26, 12).getTime()
+  const tuesday = new Date(2026, 9, 27, 12).getTime()
+  const days = [
+    { date: '2026-10-26', tokens: 100, requests: 1 },
+    { date: '2026-10-27', tokens: 200, requests: 2 },
+  ]
+  const weeks = aggregateWeeks(days)
+  assert.equal(weeks.length, 1)
+  assert.equal(weeks[0]?.date, '2026-10-26')
+  assert.equal(weeks[0]?.tokens, 300)
+  assert.equal(weeks[0]?.requests, 3)
+
+  const cum = cumulateDays(days)
+  assert.deepEqual(cum.map(c => c.tokens), [100, 300])
+  assert.deepEqual(cum.map(c => c.requests), [1, 3])
+
+  // Starting on a Tuesday pads one null so the cell lands on row 1.
+  const aligned = weekAlignCells([{ date: '2026-10-27', tokens: 200, requests: 2 }])
+  assert.equal(aligned.length, 2)
+  assert.equal(aligned[0], null)
+  assert.equal(aligned[1]?.date, '2026-10-27')
+  assert.equal(weekAlignCells([]).length, 0)
+
+  // Sanity on the helper data used above.
+  assert.equal(dayKeyOf(monday), '2026-10-26')
+  assert.equal(dayKeyOf(tuesday), '2026-10-27')
+})
+
+test('buildDashboardData carries the heatmap window', () => {
+  const data = buildDashboardData([recordAt(NOON, 'chat')], {}, { chartDays: 3, now: NOON })
+  assert.equal(data.heatmap.length, HEATMAP_DAYS)
+  assert.equal(data.heatmap[data.heatmap.length - 1]?.tokens, 2000)
 })

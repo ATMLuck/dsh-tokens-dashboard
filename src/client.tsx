@@ -11,7 +11,7 @@
  * maps the cursor to a day index through the exported chart geometry, and
  * the donut reads data-label/data-value/data-pct off the hovered slice.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactElement } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: browser runtime services — declares ctx.slots (SlotRegistry).
@@ -19,8 +19,19 @@ import type {} from '@deepseek-ai/dsh-client-runtime/client'
 // Type-only: the settings shell's SlotMap merge ('settings.section').
 // Cross-plugin collaboration goes through slots, never a value import.
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
-import { dayCenterX, dayIndexFromSvgX, colorFor, formatTokens, LINE_CHART_GEOMETRY } from './charts.ts'
+import {
+  colorFor,
+  dayCenterX,
+  dayIndexFromSvgX,
+  formatTokens,
+  formatWan,
+  renderHeatmapSVG,
+  LINE_CHART_GEOMETRY,
+} from './charts.ts'
+import { aggregateWeeks, cumulateDays, weekAlignCells } from './aggregate.ts'
+import { shiftDayKey } from './days.ts'
 import type { DashboardData } from './aggregate.ts'
+import type { HeatmapCell } from './types.ts'
 import { renderDashboardBody } from './dashboard.ts'
 
 export const name = 'tokens-dashboard-client'
@@ -57,6 +68,15 @@ const TOOLBAR_STYLE = `
 .td-settings .td-daytip .td-tip-row { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .td-settings .td-daytip .td-tip-row .dot { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .td-settings .td-daytip .td-tip-row .v { margin-left: auto; padding-left: 14px; font-family: ui-monospace, Menlo, monospace; }
+/* Token 活动 heatmap panel (client-owned: its three modes are pure view state). */
+.td-settings .td-hmpanel { background: #171a21; border: 1px solid #232833; border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.td-settings .td-hmpanel h2 { font-size: 14px; margin: 0; color: #aeb6c8; font-weight: 600; }
+.td-settings .td-hmhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.td-settings .td-seg { display: flex; gap: 2px; background: #10131a; border: 1px solid #232833; border-radius: 999px; padding: 2px; }
+.td-settings .td-seg button { background: transparent; border: none; color: #8b93a7; font-size: 12px; padding: 4px 12px; border-radius: 999px; cursor: pointer; }
+.td-settings .td-seg button.td-active { background: #232833; color: #e6e9f0; }
+.td-settings .td-hmwrap { position: relative; }
+.td-settings .td-heatsvg { display: block; width: 100%; height: auto; }
 `
 
 interface HoverDay {
@@ -66,6 +86,112 @@ interface HoverDay {
   /** Chart top relative to the fragment wrapper, in CSS px. */
   chartTop: number
   chartHeight: number
+}
+
+type HeatmapMode = 'daily' | 'weekly' | 'cumulative'
+
+const HEATMAP_MODES: readonly { key: HeatmapMode; label: string }[] = [
+  { key: 'daily', label: '每日' },
+  { key: 'weekly', label: '每周' },
+  { key: 'cumulative', label: '累计' },
+]
+
+/** 2026-10-27 → 2026年10月27日 (the reference tooltip's date style). */
+function zhDate(dateKey: string): string {
+  const [year, month, day] = dateKey.split('-')
+  if (year === undefined || month === undefined || day === undefined) return dateKey
+  return `${year}年${Number.parseInt(month, 10)}月${Number.parseInt(day, 10)}日`
+}
+
+interface HeatTip {
+  x: number
+  y: number
+  line1: string
+  line2: string
+}
+
+/**
+ * Token 活动 panel: a GitHub-style calendar grid of the trailing year, with
+ * 每日/每周/累计 view modes (pure view state over the same per-day data) and
+ * a per-cell tooltip in the shared .td-daytip style.
+ */
+function TokenHeatmap({ days }: { days: readonly HeatmapCell[] }): ReactElement {
+  const [mode, setMode] = useState<HeatmapMode>('daily')
+  const wrapRef = useRef<HTMLDivElement>(null)
+  const [tip, setTip] = useState<HeatTip | null>(null)
+
+  const cells = useMemo(() => {
+    if (mode === 'weekly') return aggregateWeeks(days)
+    if (mode === 'cumulative') return weekAlignCells(cumulateDays(days))
+    return weekAlignCells(days)
+  }, [days, mode])
+
+  const svgHtml = useMemo(
+    () => renderHeatmapSVG({ cells, rows: mode === 'weekly' ? 1 : 7 }),
+    [cells, mode],
+  )
+
+  const moveTip = (e: React.MouseEvent<HTMLDivElement>): void => {
+    const wrap = wrapRef.current
+    if (wrap === null) return
+    const target = e.target instanceof Element ? e.target : null
+    const cellEl = target?.closest('.td-hcell') ?? null
+    if (cellEl === null) {
+      setTip(null)
+      return
+    }
+    const date = cellEl.getAttribute('data-date') ?? ''
+    const tokens = Number(cellEl.getAttribute('data-tokens') ?? '0')
+    const requests = Number(cellEl.getAttribute('data-requests') ?? '0')
+    const line1 =
+      mode === 'weekly' ? `${date} ~ ${shiftDayKey(date, 6).slice(5)} 当周` : zhDate(date)
+    const line2 = `${mode === 'cumulative' ? '累计 ' : ''}${formatWan(tokens)} tokens · ${requests} 轮消息`
+    const rect = wrap.getBoundingClientRect()
+    setTip({ x: e.clientX - rect.left, y: e.clientY - rect.top, line1, line2 })
+  }
+
+  const tipStyle: CSSProperties | undefined =
+    tip === null
+      ? undefined
+      : (() => {
+          const width = wrapRef.current?.clientWidth ?? 0
+          const flip = tip.x > width - 260
+          return {
+            left: flip ? undefined : tip.x + 14,
+            right: flip ? width - tip.x + 14 : undefined,
+            top: tip.y + 14,
+          }
+        })()
+
+  return (
+    <div className="td-hmpanel">
+      <div className="td-hmhead">
+        <h2>Token 活动</h2>
+        <div className="td-seg">
+          {HEATMAP_MODES.map(entry => (
+            <button
+              key={entry.key}
+              className={mode === entry.key ? 'td-active' : ''}
+              onClick={() => setMode(entry.key)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div ref={wrapRef} className="td-hmwrap" onMouseMove={moveTip} onMouseLeave={() => setTip(null)}>
+        <div dangerouslySetInnerHTML={{ __html: svgHtml }} />
+        {tip !== null ? (
+          <div className="td-daytip" style={tipStyle}>
+            <div className="td-tip-date">{tip.line1}</div>
+            <div className="td-tip-row">
+              <span>{tip.line2}</span>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
 }
 
 /** Donut tooltip state, read off the hovered slice's data attributes. */
@@ -265,6 +391,7 @@ function UsageSection(): ReactElement {
           </span>
         )}
       </div>
+      {data !== null ? <TokenHeatmap days={data.heatmap} /> : null}
       <div
         ref={fragRef}
         className="td-fragwrap"

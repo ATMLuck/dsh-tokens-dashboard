@@ -7,7 +7,9 @@ import {
   formatInt,
   formatTokens,
   formatUsd,
+  formatWan,
   renderDonutSVG,
+  renderHeatmapSVG,
   renderSmoothLineSVG,
 } from '../src/charts.ts'
 import { renderDashboardBody } from '../src/dashboard.ts'
@@ -117,6 +119,45 @@ test('cursor mapping helpers round-trip day indices', () => {
   // Single-day windows always resolve to day 0.
   assert.equal(dayIndexFromSvgX(400, 1), 0)
   assert.equal(dayCenterX(0, 1), 454)
+})
+
+test('formatWan renders Chinese-scaled token counts', () => {
+  assert.equal(formatWan(0), '0')
+  assert.equal(formatWan(5000), '5000')
+  assert.equal(formatWan(690_000), '69万')
+  assert.equal(formatWan(35_228_000), '3522.8万')
+  assert.equal(formatWan(152_000_000), '1.5亿')
+})
+
+test('heatmap grid aligns weeks, labels months and exposes cell data', () => {
+  // 2026-10-26 is a Monday; 45 consecutive days span seven week columns.
+  const days = []
+  for (let i = 0; i < 45; i++) {
+    const d = new Date(2026, 9, 26 + i, 12)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    const tokens = key === '2026-10-27' ? 100 : key === '2026-11-03' ? 300 : key === '2026-12-08' ? 900 : 0
+    days.push({ date: key, tokens, requests: i === 44 ? 3 : 0 })
+  }
+  const svg = renderHeatmapSVG({ cells: days, rows: 7 })
+  // One rect per cell, seven week columns.
+  assert.equal((svg.match(/<rect /g) ?? []).length, 45)
+  assert.ok(svg.includes('viewBox="0 0 98 '))
+  assert.ok(svg.includes('data-date="2026-10-26"'))
+  assert.ok(svg.includes('data-tokens="900"'))
+  assert.ok(svg.includes('data-requests="3"'))
+  // Zero days use the idle gray; the busiest day uses the deepest blue.
+  assert.ok(svg.includes('fill="#232833"'))
+  assert.ok(svg.includes('fill="#2554b8"'))
+  // 10月 labels the first column; 11月 starts one column later and its label
+  // would collide, so it is skipped; 12月 sits far enough out to be labeled.
+  assert.ok(svg.includes('>10月</text>'))
+  assert.ok(!svg.includes('>11月</text>'))
+  assert.ok(svg.includes('>12月</text>'))
+  assert.ok(svg.includes('.td-hcell:hover { stroke: #e6e9f0; stroke-width: 1; }'))
+  // Leading nulls occupy grid slots without rendering rects.
+  const padded = renderHeatmapSVG({ cells: [null, ...days], rows: 7 })
+  assert.equal((padded.match(/<rect /g) ?? []).length, 45)
+  assert.ok(padded.includes('viewBox="0 0 98 '))
 })
 
 test('empty donut renders the placeholder ring', () => {

@@ -30,3 +30,15 @@ export function lastDayKeys(days: number, endTs: number = Date.now()): string[] 
   }
   return keys
 }
+
+/** Weekday of a `YYYY-MM-DD` key: 0 = Monday … 6 = Sunday. */
+export function weekdayMon0(dateKey: string): number {
+  return (new Date(`${dateKey}T12:00:00`).getDay() + 6) % 7
+}
+
+/** `YYYY-MM-DD` key shifted by `delta` local days (may cross month/year). */
+export function shiftDayKey(dateKey: string, delta: number): string {
+  const d = new Date(`${dateKey}T12:00:00`)
+  d.setDate(d.getDate() + delta)
+  return dayKeyOf(d.getTime())
+}

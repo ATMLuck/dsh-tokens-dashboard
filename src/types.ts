@@ -46,6 +46,16 @@ export interface ModelPricing {
 export type PricingMap = Record<string, ModelPricing>
 
 /**
+ * One heatmap cell: a local day (or an aggregated week) with its usage
+ * totals, keyed by `YYYY-MM-DD` (week cells use their Monday).
+ */
+export interface HeatmapCell {
+  date: string
+  tokens: number
+  requests: number
+}
+
+/**
  * Pricing is deployment-specific and changes over time, so it starts empty:
  * cost metrics stay 0 until the deployment configures `pricing` in
  * cordis.yml (keys are exact model ids or model id prefixes).

@@ -2,6 +2,7 @@
  * Zero-dependency SVG chart builders. Everything is a pure string function:
  * no DOM, no files, no external chart library.
  */
+import type { HeatmapCell } from './types.ts'
 
 /** Deterministic model color palette, shared by every chart and legend. */
 export const PALETTE: readonly string[] = [
@@ -19,6 +20,18 @@ export const PALETTE: readonly string[] = [
 
 export function colorFor(index: number): string {
   return PALETTE[index % PALETTE.length] ?? '#4d6bfe'
+}
+
+/** 万-based human token counts for the heatmap tooltip: 35228000 → 3522.8万. */
+export function formatWan(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0'
+  const trim1 = (n: number): string => {
+    const s = n.toFixed(1)
+    return s.endsWith('.0') ? s.slice(0, -2) : s
+  }
+  if (value >= 1e8) return `${trim1(value / 1e8)}亿`
+  if (value >= 1e4) return `${trim1(value / 1e4)}万`
+  return String(Math.round(value))
 }
 
 /** Human token counts: 1234 → 1.2K, 4_500_000 → 4.50M. */
@@ -350,6 +363,95 @@ export function renderDonutSVG(options: DonutOptions): string {
   parts.push(
     `<text x="${cx}" y="${cy + 14}" fill="#8b93a7" text-anchor="middle" font-size="10">${escapeXml(unit)}</text>`,
   )
+  parts.push('</svg>')
+  return parts.join('')
+}
+
+/** Cell colors by activity level: 0 = idle, 4 = busiest (quartile buckets). */
+const HEAT_COLORS: readonly string[] = ['#232833', '#7db9f2', '#4f95e8', '#3672d4', '#2554b8']
+
+export interface HeatmapOptions {
+  /** Week-aligned cells; null pads the leading edge (and renders nothing). */
+  cells: readonly (HeatmapCell | null)[]
+  /** Rows per column: 7 for the daily calendar, 1 for the weekly strip. */
+  rows?: number
+}
+
+/**
+ * GitHub-style activity grid: rounded cells colored by quartile of the
+ * non-zero values, month labels under the columns where each month starts.
+ * Cells carry data-date/data-tokens/data-requests for the client tooltip.
+ */
+export function renderHeatmapSVG(options: HeatmapOptions): string {
+  const rows = options.rows ?? 7
+  const cell = 11
+  const gap = 3
+  const stride = cell + gap
+  const cells = options.cells
+  const cols = Math.max(1, Math.ceil(cells.length / rows))
+
+  const nonZero = cells
+    .filter(entry => entry !== null && entry.tokens > 0)
+    .map(entry => (entry as HeatmapCell).tokens)
+    .sort((a, b) => a - b)
+  const quantile = (p: number): number => {
+    if (nonZero.length === 0) return 0
+    const index = Math.min(nonZero.length - 1, Math.floor(p * (nonZero.length - 1)))
+    return nonZero[index] ?? 0
+  }
+  const q1 = quantile(0.25)
+  const q2 = quantile(0.5)
+  const q3 = quantile(0.75)
+  const levelOf = (tokens: number): number => {
+    if (tokens <= 0) return 0
+    if (tokens <= q1) return 1
+    if (tokens <= q2) return 2
+    if (tokens <= q3) return 3
+    return 4
+  }
+
+  const parts: string[] = []
+  parts.push(
+    `<svg class="td-heatsvg" xmlns="http://www.w3.org/2000/svg" ` +
+      `viewBox="0 0 ${cols * stride} ${rows * stride + 20}" role="img" font-size="11">` +
+      `<style>.td-hcell:hover { stroke: #e6e9f0; stroke-width: 1; }</style>`,
+  )
+  cells.forEach((entry, index) => {
+    if (entry === null) return
+    const col = Math.floor(index / rows)
+    const row = index % rows
+    parts.push(
+      `<rect class="td-hcell" x="${col * stride}" y="${row * stride}" ` +
+        `width="${cell}" height="${cell}" rx="2.5" ` +
+        `fill="${HEAT_COLORS[levelOf(entry.tokens)]}" ` +
+        `data-date="${escapeXml(entry.date)}" data-tokens="${entry.tokens}" ` +
+        `data-requests="${entry.requests}"/>`,
+    )
+  })
+  // Month label under each column where a new month begins; skip labels that
+  // would collide with the previous one (months starting mid-gap, GitHub-style).
+  let lastMonth = ''
+  let lastLabelX = Number.NEGATIVE_INFINITY
+  for (let col = 0; col < cols; col++) {
+    let month = ''
+    for (let row = 0; row < rows; row++) {
+      const entry = cells[col * rows + row]
+      if (entry !== null && entry !== undefined) {
+        month = entry.date.slice(5, 7)
+        break
+      }
+    }
+    if (month === '' || month === lastMonth) continue
+    lastMonth = month
+    const x = col * stride
+    if (x - lastLabelX >= 28) {
+      lastLabelX = x
+      parts.push(
+        `<text x="${x}" y="${rows * stride + 16}" fill="#8b93a7" ` +
+          `text-anchor="start">${Number.parseInt(month, 10)}月</text>`,
+      )
+    }
+  }
   parts.push('</svg>')
   return parts.join('')
 }

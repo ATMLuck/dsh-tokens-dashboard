@@ -1,5 +1,5 @@
-import { dayKeyOf, lastDayKeys, todayKey } from './days.ts'
-import type { ModelPricing, PricingMap, UsageRecord } from './types.ts'
+import { dayKeyOf, lastDayKeys, shiftDayKey, weekdayMon0 } from './days.ts'
+import type { HeatmapCell, ModelPricing, PricingMap, UsageRecord } from './types.ts'
 
 /** Reporting windows understood by the tool, the command and the dashboard. */
 export type Period = 'today' | '7d' | '30d' | 'all'
@@ -264,6 +264,71 @@ export interface DashboardData {
   table: ModelUsage[]
   /** Records that fell outside the chart window (kept for the 累计 card). */
   windowDaysCount: number
+  /** Token-activity heatmap: the trailing year of local days (zero days kept). */
+  heatmap: HeatmapCell[]
+}
+
+/**
+ * Heatmap window: the trailing year (52 full weeks = 364 days) ending today,
+ * matching the 7-row calendar grid of the Token 活动 panel.
+ */
+export const HEATMAP_DAYS = 364
+
+/** Per-day totals for the heatmap window: zero days preserved, ascending. */
+export function buildHeatmap(
+  records: readonly UsageRecord[],
+  now: number = Date.now(),
+): HeatmapCell[] {
+  const byDay = new Map<string, HeatmapCell>()
+  for (const record of records) {
+    const key = dayKeyOf(record.ts)
+    const entry = byDay.get(key)
+    const billed = record.inputTokens + record.cacheReadTokens + record.cacheWriteTokens
+    const tokens = billed + record.outputTokens
+    if (entry === undefined) {
+      byDay.set(key, { date: key, tokens, requests: 1 })
+    } else {
+      entry.tokens += tokens
+      entry.requests += 1
+    }
+  }
+  // lastDayKeys ends at today, so no future cells can appear.
+  return lastDayKeys(HEATMAP_DAYS, now).map(date => byDay.get(date) ?? { date, tokens: 0, requests: 0 })
+}
+
+/** Aggregate daily cells into Monday-started weeks (last week partial). */
+export function aggregateWeeks(days: readonly HeatmapCell[]): HeatmapCell[] {
+  const weeks = new Map<string, HeatmapCell>()
+  for (const day of days) {
+    const monday = shiftDayKey(day.date, -weekdayMon0(day.date))
+    const week = weeks.get(monday)
+    if (week === undefined) {
+      weeks.set(monday, { date: monday, tokens: day.tokens, requests: day.requests })
+    } else {
+      week.tokens += day.tokens
+      week.requests += day.requests
+    }
+  }
+  return [...weeks.values()]
+}
+
+/** Running totals: each cell carries the cumulative sums up to that day. */
+export function cumulateDays(days: readonly HeatmapCell[]): HeatmapCell[] {
+  let tokens = 0
+  let requests = 0
+  return days.map(day => {
+    tokens += day.tokens
+    requests += day.requests
+    return { date: day.date, tokens, requests }
+  })
+}
+
+/** Pad the leading edge with nulls so the first cell lands on its weekday row. */
+export function weekAlignCells(days: readonly HeatmapCell[]): (HeatmapCell | null)[] {
+  const first = days[0]
+  if (first === undefined) return []
+  const pad = Array.from({ length: weekdayMon0(first.date) }, () => null)
+  return [...pad, ...days]
 }
 
 /**
@@ -304,5 +369,6 @@ export function buildDashboardData(
     pie: activeModels,
     table: windowModels,
     windowDaysCount: chartDays,
+    heatmap: buildHeatmap(records, now),
   }
 }
