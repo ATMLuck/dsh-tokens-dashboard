@@ -122,6 +122,8 @@ export function renderDashboardBody(data: DashboardData): string {
       ? `<div class="panel"><h2>模型占比 · 费用（估算）</h2><div class="donut-wrap">` +
         renderDonutSVG({
           items: data.pie.map(model => ({ label: model.key, value: model.costUsd })),
+          formatValue: formatUsd,
+          unit: '费用',
         }) +
         legendHtml(
           data.pie.map(model => ({

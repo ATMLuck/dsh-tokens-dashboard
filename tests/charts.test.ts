@@ -63,7 +63,7 @@ test('single-point windows render a lone emphasized dot', () => {
   assert.ok(svg.includes('r="3"'))
 })
 
-test('donut slices carry hover enlarge rules and share labels', () => {
+test('donut slices carry hover enlarge rules and tooltip data attributes', () => {
   const donut = renderDonutSVG({
     items: [
       { label: 'a', value: 3 },
@@ -74,11 +74,28 @@ test('donut slices carry hover enlarge rules and share labels', () => {
   assert.equal((donut.match(/class="td-slice"/g) ?? []).length, 2)
   assert.ok(donut.includes('transform-origin:100px 100px'))
   assert.ok(donut.includes('.td-slice:hover path { transform: scale(1.05); }'))
-  // Share labels ship hidden and are revealed by the hover rule.
-  assert.ok(donut.includes('75.0%'))
-  assert.ok(donut.includes('25.0%'))
-  assert.ok(donut.includes('pointer-events="none"'))
-  assert.ok(donut.includes('.td-slice .td-slice-pct { visibility: hidden;'))
+  // No in-SVG percentage label; the client tooltip reads data-* instead.
+  assert.ok(!donut.includes('td-slice-pct'))
+  assert.ok(donut.includes('data-label="a"'))
+  assert.ok(donut.includes('data-value="3"'))
+  assert.ok(donut.includes('data-pct="75.0"'))
+  assert.ok(donut.includes('data-pct="25.0"'))
+  assert.ok(donut.includes('data-index="0"'))
+  assert.ok(donut.includes('data-index="1"'))
+})
+
+test('donut supports a custom value format and unit label', () => {
+  const donut = renderDonutSVG({
+    items: [
+      { label: 'a', value: 3 },
+      { label: 'b', value: 1 },
+    ],
+    formatValue: formatUsd,
+    unit: '费用',
+  })
+  assert.ok(donut.includes('>$4.00</text>'))
+  assert.ok(donut.includes('data-value="$3.00"'))
+  assert.ok(donut.includes('>费用</text>'))
 })
 
 test('cursor mapping helpers round-trip day indices', () => {

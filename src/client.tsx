@@ -5,10 +5,11 @@
  * from the host plugin's web-server route and renders it with the shared
  * pure dashboard modules (no chart library, no extra runtime deps).
  *
- * Interactions live here, not in the rendered fragment: donut hover effects
- * are pure CSS inside the SVG, while the curve chart's crosshair + per-day
- * tooltip are handled by mapping the cursor to a day index through the
- * exported chart geometry.
+ * Interactions live here, not in the rendered fragment: donut hover
+ * enlargement is pure CSS inside the SVG while its tooltip and the curve
+ * chart's crosshair + per-day tooltip are handled by the client — the curve
+ * maps the cursor to a day index through the exported chart geometry, and
+ * the donut reads data-label/data-value/data-pct off the hovered slice.
  */
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, ReactElement } from 'react'
@@ -67,6 +68,16 @@ interface HoverDay {
   chartHeight: number
 }
 
+/** Donut tooltip state, read off the hovered slice's data attributes. */
+interface SliceTip {
+  x: number
+  y: number
+  label: string
+  value: string
+  pct: string
+  index: number
+}
+
 export function apply(ctx: Context): void {
   ctx.slots.inject('settings.section', () =>
     ctx.slots.register(
@@ -88,6 +99,7 @@ function UsageSection(): ReactElement {
   const [error, setError] = useState('')
   const [updatedAt, setUpdatedAt] = useState(0)
   const [hover, setHover] = useState<HoverDay | null>(null)
+  const [sliceTip, setSliceTip] = useState<SliceTip | null>(null)
   const daysRef = useRef(days)
   daysRef.current = days
   const fragRef = useRef<HTMLDivElement>(null)
@@ -157,6 +169,27 @@ function UsageSection(): ReactElement {
     })
   }
 
+  const moveSliceTip = (e: React.MouseEvent<HTMLDivElement>): void => {
+    const frag = fragRef.current
+    if (frag === null) return
+    const target = e.target instanceof Element ? e.target : null
+    const slice = (target?.closest('.td-slice') ?? null)
+    const label = slice?.getAttribute('data-label') ?? null
+    if (slice === null || label === null) {
+      setSliceTip(null)
+      return
+    }
+    const fragRect = frag.getBoundingClientRect()
+    setSliceTip({
+      x: e.clientX - fragRect.left,
+      y: e.clientY - fragRect.top,
+      label,
+      value: slice.getAttribute('data-value') ?? '',
+      pct: slice.getAttribute('data-pct') ?? '',
+      index: Number.parseInt(slice.getAttribute('data-index') ?? '0', 10) || 0,
+    })
+  }
+
   const tipStyle = (hoverDay: HoverDay): CSSProperties => {
     const flip = hoverDay.x > (fragRef.current?.clientWidth ?? 0) - 240
     return {
@@ -188,6 +221,27 @@ function UsageSection(): ReactElement {
       </>
     ) : null
 
+  const sliceTipStyle = (tip: SliceTip): CSSProperties => {
+    const flip = tip.x > (fragRef.current?.clientWidth ?? 0) - 240
+    return {
+      left: flip ? undefined : tip.x + 14,
+      right: flip ? (fragRef.current?.clientWidth ?? 0) - tip.x + 14 : undefined,
+      top: tip.y + 14,
+    }
+  }
+
+  const sliceTipEl =
+    sliceTip !== null ? (
+      <div className="td-daytip" style={sliceTipStyle(sliceTip)}>
+        <div className="td-tip-date">{sliceTip.label}</div>
+        <div className="td-tip-row">
+          <span className="dot" style={{ background: colorFor(sliceTip.index) }} />
+          <span>占比 {sliceTip.pct}%</span>
+          <span className="v">{sliceTip.value}</span>
+        </div>
+      </div>
+    ) : null
+
   return (
     <div className="td-settings">
       <style>{TOOLBAR_STYLE}</style>
@@ -214,11 +268,18 @@ function UsageSection(): ReactElement {
       <div
         ref={fragRef}
         className="td-fragwrap"
-        onMouseMove={moveDayTip}
-        onMouseLeave={() => setHover(null)}
+        onMouseMove={e => {
+          moveDayTip(e)
+          moveSliceTip(e)
+        }}
+        onMouseLeave={() => {
+          setHover(null)
+          setSliceTip(null)
+        }}
       >
         <div dangerouslySetInnerHTML={{ __html: html }} />
         {dayTip}
+        {sliceTipEl}
       </div>
     </div>
   )

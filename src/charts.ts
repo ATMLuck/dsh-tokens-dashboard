@@ -269,24 +269,29 @@ export interface DonutOptions {
   items: readonly PieItem[]
   size?: number
   thickness?: number
+  /** Value formatter for titles, tooltips and the center total (default formatTokens). */
+  formatValue?: (value: number) => string
+  /** Unit label under the center total (default "tokens"). */
+  unit?: string
 }
 
 /**
  * Donut chart (no legend; the caller renders one with matching colors).
- * Zero or all-zero inputs render a placeholder ring.
+ * Zero or all-zero inputs render a placeholder ring. Each slice carries
+ * data-label/data-value/data-pct/data-index so a client-side tooltip can
+ * describe it on hover, matching the curve chart's tooltip style.
  */
-/** Hover rules carried inside the donut SVG so the effect works anywhere the
- * fragment is mounted: the hovered slice scales out slightly from the center
- * and its share label appears on the slice. */
+/** Hover rule carried inside the donut SVG so the effect works anywhere the
+ * fragment is mounted: the hovered slice scales out slightly from the center. */
 const DONUT_HOVER_STYLE =
   '.td-slice path { transition: transform 0.15s ease; }' +
-  '.td-slice:hover path { transform: scale(1.05); }' +
-  '.td-slice .td-slice-pct { visibility: hidden; font-weight: 700; }' +
-  '.td-slice:hover .td-slice-pct { visibility: visible; }'
+  '.td-slice:hover path { transform: scale(1.05); }'
 
 export function renderDonutSVG(options: DonutOptions): string {
   const size = options.size ?? 200
   const thickness = options.thickness ?? 26
+  const format = options.formatValue ?? formatTokens
+  const unit = options.unit ?? 'tokens'
   const cx = size / 2
   const cy = size / 2
   const radius = (size - thickness * 2) / 2
@@ -326,31 +331,24 @@ export function renderDonutSVG(options: DonutOptions): string {
     const xi0 = cx + inner * Math.cos(a0)
     const yi0 = cy + inner * Math.sin(a0)
     const percent = ((value / total) * 100).toFixed(1)
-    // Share label at the slice's mid-angle, revealed by the hover rule above.
-    const mid = (a0 + a1) / 2
-    const midR = (radius + inner) / 2
-    const pctX = cx + midR * Math.cos(mid)
-    const pctY = cy + midR * Math.sin(mid)
     parts.push(
-      `<g class="td-slice">` +
+      `<g class="td-slice" data-label="${escapeXml(item.label)}" ` +
+        `data-value="${escapeXml(format(value))}" data-pct="${percent}" data-index="${index}">` +
         `<path d="M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${radius} ${radius} 0 ${largeArc} 1 ` +
         `${x1.toFixed(2)} ${y1.toFixed(2)} L ${xi1.toFixed(2)} ${yi1.toFixed(2)} ` +
         `A ${inner} ${inner} 0 ${largeArc} 0 ${xi0.toFixed(2)} ${yi0.toFixed(2)} Z" ` +
         `fill="${colorFor(index)}" fill-opacity="0.9" ` +
         `style="transform-origin:${cx}px ${cy}px">` +
-        `<title>${escapeXml(item.label)}: ${escapeXml(formatTokens(value))}（${percent}%）</title></path>` +
-        `<text class="td-slice-pct" x="${pctX.toFixed(1)}" y="${pctY.toFixed(1)}" ` +
-        `fill="#0f1115" text-anchor="middle" dominant-baseline="central" font-size="12" ` +
-        `pointer-events="none">${percent}%</text>` +
+        `<title>${escapeXml(item.label)}: ${escapeXml(format(value))}（${percent}%）</title></path>` +
         `</g>`,
     )
   })
   parts.push(
     `<text x="${cx}" y="${cy - 2}" fill="#e6e9f0" text-anchor="middle" font-size="13" ` +
-      `font-weight="600">${escapeXml(formatTokens(total))}</text>`,
+      `font-weight="600">${escapeXml(format(total))}</text>`,
   )
   parts.push(
-    `<text x="${cx}" y="${cy + 14}" fill="#8b93a7" text-anchor="middle" font-size="10">tokens</text>`,
+    `<text x="${cx}" y="${cy + 14}" fill="#8b93a7" text-anchor="middle" font-size="10">${escapeXml(unit)}</text>`,
   )
   parts.push('</svg>')
   return parts.join('')
