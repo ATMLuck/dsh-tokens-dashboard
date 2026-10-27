@@ -198,7 +198,7 @@ export function renderSmoothLineSVG(options: SmoothLineOptions): string {
   const parts: string[] = []
   parts.push(
     `<svg class="td-linesvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" ` +
-      `role="img" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11">`,
+      `role="img" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14">`,
   )
 
   // Gridlines + y labels.
@@ -211,7 +211,7 @@ export function renderSmoothLineSVG(options: SmoothLineOptions): string {
         `stroke="${g === 0 ? '#3a4152' : '#232833'}" stroke-width="1"/>`,
     )
     parts.push(
-      `<text x="${padLeft - 8}" y="${(y + 3.5).toFixed(1)}" fill="#8b93a7" text-anchor="end">` +
+      `<text x="${padLeft - 8}" y="${(y + 4.5).toFixed(1)}" fill="#8b93a7" text-anchor="end">` +
         `${escapeXml(formatTokens(value))}</text>`,
     )
   }
@@ -241,17 +241,18 @@ export function renderSmoothLineSVG(options: SmoothLineOptions): string {
       parts.push(`<path d="${d}" fill="${color}" fill-opacity="0.12" stroke="none"/>`)
       parts.push(
         `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" ` +
-          `stroke-linecap="round" stroke-linejoin="round"><title>${escapeXml(s.label)}</title></path>`,
+          `stroke-linecap="round" stroke-linejoin="round"/>`,
       )
     }
     for (let j = 0; j < pointCount; j++) {
       const v = s.values[j] ?? 0
       if (v <= 0) continue
       const isToday = j === pointCount - 1
+      // No <title> here: the client renders its own tooltip, and the native
+      // one is a themed box that pops up late and clashes with the page.
       parts.push(
         `<circle cx="${xAt(j).toFixed(1)}" cy="${yAt(v).toFixed(1)}" r="${isToday ? 3 : 2}" ` +
-          `fill="${color}" stroke="#0f1115" stroke-width="${isToday ? 1.5 : 0.75}">` +
-          `<title>${escapeXml(s.label)} · ${escapeXml(days[j] ?? '')}: ${escapeXml(formatTokens(v))}</title></circle>`,
+          `fill="${color}" stroke="#0f1115" stroke-width="${isToday ? 1.5 : 0.75}"/>`,
       )
     }
   }
@@ -338,8 +339,7 @@ export function renderDonutSVG(options: DonutOptions): string {
         `${x1.toFixed(2)} ${y1.toFixed(2)} L ${xi1.toFixed(2)} ${yi1.toFixed(2)} ` +
         `A ${inner} ${inner} 0 ${largeArc} 0 ${xi0.toFixed(2)} ${yi0.toFixed(2)} Z" ` +
         `fill="${colorFor(index)}" fill-opacity="0.9" ` +
-        `style="transform-origin:${cx}px ${cy}px">` +
-        `<title>${escapeXml(item.label)}: ${escapeXml(format(value))}（${percent}%）</title></path>` +
+        `style="transform-origin:${cx}px ${cy}px"/>` +
         `</g>`,
     )
   })

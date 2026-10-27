@@ -50,6 +50,9 @@ test('smooth curve chart renders one monotone curve per series', () => {
   assert.equal((svg.match(/<circle /g) ?? []).length, 4)
   assert.ok(svg.includes('r="3"'))
   assert.ok(svg.includes('10-27'))
+  // Larger axis labels; no native <title> tooltips (the client draws its own).
+  assert.ok(svg.includes('font-size="14"'))
+  assert.ok(!svg.includes('<title'))
 })
 
 test('single-point windows render a lone emphasized dot', () => {
@@ -76,6 +79,8 @@ test('donut slices carry hover enlarge rules and tooltip data attributes', () =>
   assert.ok(donut.includes('.td-slice:hover path { transform: scale(1.05); }'))
   // No in-SVG percentage label; the client tooltip reads data-* instead.
   assert.ok(!donut.includes('td-slice-pct'))
+  // No native <title> tooltip either — same themed-box problem as the curve.
+  assert.ok(!donut.includes('<title'))
   assert.ok(donut.includes('data-label="a"'))
   assert.ok(donut.includes('data-value="3"'))
   assert.ok(donut.includes('data-pct="75.0"'))
