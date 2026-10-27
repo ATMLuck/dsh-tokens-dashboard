@@ -32,7 +32,7 @@ import { aggregateWeeks, cumulateDays, weekAlignCells } from './aggregate.ts'
 import { shiftDayKey } from './days.ts'
 import type { DashboardData } from './aggregate.ts'
 import type { HeatmapCell } from './types.ts'
-import { renderDashboardBody } from './dashboard.ts'
+import { DASHBOARD_STYLE, renderDashboardCharts, renderDashboardHead } from './dashboard.ts'
 
 export const name = 'tokens-dashboard-client'
 
@@ -221,7 +221,8 @@ export function apply(ctx: Context): void {
 function UsageSection(): ReactElement {
   const [days, setDays] = useState(30)
   const [data, setData] = useState<DashboardData | null>(null)
-  const [html, setHtml] = useState('')
+  const [headHtml, setHeadHtml] = useState('')
+  const [chartsHtml, setChartsHtml] = useState('')
   const [error, setError] = useState('')
   const [updatedAt, setUpdatedAt] = useState(0)
   const [hover, setHover] = useState<HoverDay | null>(null)
@@ -229,9 +230,10 @@ function UsageSection(): ReactElement {
   const daysRef = useRef(days)
   daysRef.current = days
   const fragRef = useRef<HTMLDivElement>(null)
-  /** Signature of the rendered aggregates; skips DOM replacement (and the
-   * hover loss it causes) while a refresh returns unchanged numbers. */
-  const htmlSigRef = useRef('')
+  /** Signatures of the rendered aggregates; they skip DOM replacement (and
+   * the hover loss it causes) while a refresh returns unchanged numbers. */
+  const headSigRef = useRef('')
+  const chartsSigRef = useRef('')
 
   useEffect(() => {
     let cancelled = false
@@ -242,10 +244,17 @@ function UsageSection(): ReactElement {
         const next = (await response.json()) as DashboardData
         if (cancelled) return
         setData(next)
-        const signature = JSON.stringify([next.lineDays, next.lineSeries, next.cards, next.hasPricing])
-        if (signature !== htmlSigRef.current) {
-          htmlSigRef.current = signature
-          setHtml(renderDashboardBody(next))
+        // The window switcher sits between the two fragments: cards above it,
+        // charts below it. Each half re-renders only when its own numbers move.
+        const headSig = JSON.stringify([next.cards, next.hasPricing])
+        if (headSig !== headSigRef.current) {
+          headSigRef.current = headSig
+          setHeadHtml(renderDashboardHead(next))
+        }
+        const chartsSig = JSON.stringify([next.lineDays, next.lineSeries, next.hasPricing])
+        if (chartsSig !== chartsSigRef.current) {
+          chartsSigRef.current = chartsSig
+          setChartsHtml(renderDashboardCharts(next))
         }
         setUpdatedAt(next.generatedAt)
         setError('')
@@ -371,42 +380,47 @@ function UsageSection(): ReactElement {
   return (
     <div className="td-settings">
       <style>{TOOLBAR_STYLE}</style>
-      <div className="td-toolbar">
-        {WINDOWS.map(window => (
-          <button
-            key={window}
-            className={window === days ? 'td-active' : ''}
-            onClick={() => setDays(window)}
-          >
-            近 {window} 天
-          </button>
-        ))}
-        {error !== '' ? (
-          <span className="td-error">数据加载失败：{error}</span>
-        ) : (
-          <span className="td-hint">
-            {updatedAt > 0
-              ? `每 ${REFRESH_MS / 1000} 秒自动刷新 · 上次 ${new Date(updatedAt).toLocaleTimeString('zh-CN', { hour12: false })}`
-              : '加载中…'}
-          </span>
-        )}
-      </div>
       {data !== null ? <TokenHeatmap days={data.heatmap} /> : null}
-      <div
-        ref={fragRef}
-        className="td-fragwrap"
-        onMouseMove={e => {
-          moveDayTip(e)
-          moveSliceTip(e)
-        }}
-        onMouseLeave={() => {
-          setHover(null)
-          setSliceTip(null)
-        }}
-      >
-        <div dangerouslySetInnerHTML={{ __html: html }} />
-        {dayTip}
-        {sliceTipEl}
+      <div className="td-dashboard">
+        <style>{DASHBOARD_STYLE}</style>
+        <div dangerouslySetInnerHTML={{ __html: headHtml }} />
+        {/* Window switcher lives directly above the daily curve chart. */}
+        <div className="td-toolbar">
+          {WINDOWS.map(window => (
+            <button
+              key={window}
+              className={window === days ? 'td-active' : ''}
+              onClick={() => setDays(window)}
+            >
+              近 {window} 天
+            </button>
+          ))}
+          {error !== '' ? (
+            <span className="td-error">数据加载失败：{error}</span>
+          ) : (
+            <span className="td-hint">
+              {updatedAt > 0
+                ? `每 ${REFRESH_MS / 1000} 秒自动刷新 · 上次 ${new Date(updatedAt).toLocaleTimeString('zh-CN', { hour12: false })}`
+                : '加载中…'}
+            </span>
+          )}
+        </div>
+        <div
+          ref={fragRef}
+          className="td-fragwrap"
+          onMouseMove={e => {
+            moveDayTip(e)
+            moveSliceTip(e)
+          }}
+          onMouseLeave={() => {
+            setHover(null)
+            setSliceTip(null)
+          }}
+        >
+          <div dangerouslySetInnerHTML={{ __html: chartsHtml }} />
+          {dayTip}
+          {sliceTipEl}
+        </div>
       </div>
     </div>
   )

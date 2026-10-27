@@ -12,7 +12,7 @@ import {
   renderHeatmapSVG,
   renderSmoothLineSVG,
 } from '../src/charts.ts'
-import { renderDashboardBody } from '../src/dashboard.ts'
+import { DASHBOARD_STYLE, renderDashboardCharts, renderDashboardHead } from '../src/dashboard.ts'
 import { buildDashboardData } from '../src/aggregate.ts'
 
 const NOON = new Date(2026, 9, 27, 12, 0, 0, 0).getTime()
@@ -183,9 +183,8 @@ test('dashboard body embeds scoped styles, charts and the model table', () => {
     chartDays: 3,
     now: NOON,
   })
-  const html = renderDashboardBody(data)
-  assert.ok(html.startsWith('<style>'))
-  assert.ok(html.includes('class="td-dashboard"'))
+  const html = renderDashboardHead(data) + renderDashboardCharts(data)
+  assert.ok(DASHBOARD_STYLE.includes('.td-dashboard'))
   assert.ok(html.includes('今日'))
   assert.ok(html.includes('每日 token 用量'))
   assert.ok(html.includes('模型占比 · tokens'))
@@ -197,7 +196,7 @@ test('dashboard body embeds scoped styles, charts and the model table', () => {
   assert.ok(!html.includes('<th>缓存读</th>'))
   assert.ok(!html.includes('<th>缓存写</th>'))
   assert.ok(html.includes('<td>500</td><td>2.0K</td>'))
-  const noPricingHtml = renderDashboardBody(
+  const noPricingHtml = renderDashboardCharts(
     buildDashboardData([record], {}, { chartDays: 3, now: NOON }),
   )
   assert.ok(!noPricingHtml.includes('<th>费用</th>'))
@@ -209,7 +208,7 @@ test('dashboard body embeds scoped styles, charts and the model table', () => {
     {},
     { chartDays: 1, now: NOON },
   )
-  const sneakyHtml = renderDashboardBody(sneaky)
+  const sneakyHtml = renderDashboardHead(sneaky) + renderDashboardCharts(sneaky)
   assert.ok(!sneakyHtml.includes('<img>'))
   assert.ok(sneakyHtml.includes('&lt;img&gt;'))
 })

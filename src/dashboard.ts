@@ -19,9 +19,10 @@ function escapeHtml(text: string): string {
 
 /**
  * All rules are scoped under `.td-dashboard` so the fragment stays inert
- * inside the settings page (host app styles are never touched).
+ * inside the settings page (host app styles are never touched). The client
+ * injects this once above the two fragments it renders.
  */
-const STYLE = `
+export const DASHBOARD_STYLE = `
 .td-dashboard { color: #e6e9f0; font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 14px; }
 .td-dashboard * { box-sizing: border-box; }
 .td-dashboard .meta { color: #8b93a7; font-size: 12px; margin-bottom: 16px; }
@@ -77,15 +78,26 @@ function legendHtml(
 }
 
 /**
- * Render the dashboard as a scoped HTML fragment (style + one wrapper div).
- * Shared by the Web Client settings tab; contains no scripts — the host app
- * owns when to re-fetch and re-render.
+ * Render the dashboard head as a scoped HTML fragment: the meta line and the
+ * four summary cards. The client renders the window switcher between this
+ * and the charts fragment, so both stay pure server-rendered strings.
  */
-export function renderDashboardBody(data: DashboardData): string {
+export function renderDashboardHead(data: DashboardData): string {
   const generated = new Date(data.generatedAt).toLocaleString('zh-CN', { hour12: false })
-  const hasModels = data.lineModels.length > 0
-
   const cards = data.cards.map(card => cardHtml(card, data.hasPricing)).join('')
+  return (
+    `<div class="meta">数据更新于 ${escapeHtml(generated)}${data.hasPricing ? '' : ' · 未配置定价，费用为 0'}</div>` +
+    `<section class="cards">${cards}</section>`
+  )
+}
+
+/**
+ * Render the dashboard charts as a scoped HTML fragment: the daily line
+ * chart, the two donuts, the model table and the footer. Script-free — the
+ * host client owns re-fetching, re-rendering and all interactions.
+ */
+export function renderDashboardCharts(data: DashboardData): string {
+  const hasModels = data.lineModels.length > 0
 
   const lineChart = hasModels
     ? renderSmoothLineSVG({
@@ -158,16 +170,11 @@ export function renderDashboardBody(data: DashboardData): string {
     : ''
 
   return (
-    `<style>${STYLE}</style>` +
-    `<div class="td-dashboard">` +
-    `<div class="meta">数据更新于 ${escapeHtml(generated)}${data.hasPricing ? '' : ' · 未配置定价，费用为 0'}</div>` +
-    `<section class="cards">${cards}</section>` +
     `<div class="panel td-linepanel"><h2>每日 token 用量（按模型）</h2>` +
     `<div class="donut-wrap" style="align-items:flex-start">${lineChart}${lineLegend}</div></div>` +
     `<div class="panel"><h2>模型占比 · tokens</h2><div class="donut-wrap">${tokenDonut}${tokenLegend}</div></div>` +
     costSection +
     tableSection +
-    `<footer>数据来源：会话 assistant/message 的 usage 事件（dsh-tokens-dashboard 插件采集）；费用基于部署配置的定价估算，仅供参考。</footer>` +
-    `</div>`
+    `<footer>数据来源：会话 assistant/message 的 usage 事件（dsh-tokens-dashboard 插件采集）；费用基于部署配置的定价估算，仅供参考。</footer>`
   )
 }
