@@ -60,25 +60,87 @@ function escapeXml(text: string): string {
     .replaceAll("'", '&#39;')
 }
 
-export interface StackedSeries {
+export interface LineSeries {
   label: string
   values: readonly number[]
 }
 
-export interface DailyBarsOptions {
+export interface SmoothLineOptions {
   days: readonly string[]
-  series: readonly StackedSeries[]
+  series: readonly LineSeries[]
   width?: number
   height?: number
 }
 
 /**
- * Stacked daily bar chart of `series[i].values[j]` for `days[j]`, stacked in
- * the given order (bottom-up). Daily usage is discrete, so each day renders
- * one column — zero days leave a gap instead of the misleading spikes a
- * zero-filled area chart produces on sparse data.
+ * Monotone cubic (Fritsch–Carlson) tangents for the point list. The curve
+ * passes through every daily value and never overshoots a local peak, so a
+ * sparse usage history reads as smooth waves instead of jagged spikes.
  */
-export function renderDailyBarsSVG(options: DailyBarsOptions): string {
+function monotoneTangents(points: readonly { x: number; y: number }[]): number[] {
+  const count = points.length
+  const slopes: number[] = []
+  for (let j = 0; j + 1 < count; j++) {
+    const p0 = points[j]
+    const p1 = points[j + 1]
+    if (p0 === undefined || p1 === undefined) continue
+    slopes.push((p1.y - p0.y) / (p1.x - p0.x))
+  }
+  const m: number[] = new Array<number>(count).fill(0)
+  if (count < 2) return m
+  m[0] = slopes[0] ?? 0
+  m[count - 1] = slopes[count - 2] ?? 0
+  for (let j = 1; j + 1 < count; j++) {
+    const left = slopes[j - 1] ?? 0
+    const right = slopes[j] ?? 0
+    m[j] = left * right <= 0 ? 0 : (left + right) / 2
+  }
+  for (let j = 0; j + 1 < count; j++) {
+    const d = slopes[j] ?? 0
+    if (d === 0) {
+      m[j] = 0
+      m[j + 1] = 0
+      continue
+    }
+    const a = (m[j] ?? 0) / d
+    const b = (m[j + 1] ?? 0) / d
+    const s = a * a + b * b
+    if (s > 9) {
+      const tau = 3 / Math.sqrt(s)
+      m[j] = tau * a * d
+      m[j + 1] = tau * b * d
+    }
+  }
+  return m
+}
+
+function smoothPath(points: readonly { x: number; y: number }[], baseline: number): string {
+  const count = points.length
+  const first = points[0]
+  if (count < 2 || first === undefined) return ''
+  const m = monotoneTangents(points)
+  let d = `M ${first.x.toFixed(1)},${first.y.toFixed(1)}`
+  for (let j = 0; j + 1 < count; j++) {
+    const p0 = points[j]
+    const p1 = points[j + 1]
+    if (p0 === undefined || p1 === undefined) continue
+    const h = (p1.x - p0.x) / 3
+    d +=
+      ` C ${(p0.x + h).toFixed(1)},${(p0.y + (m[j] ?? 0) * h).toFixed(1)}` +
+      ` ${(p1.x - h).toFixed(1)},${(p1.y - (m[j + 1] ?? 0) * h).toFixed(1)}` +
+      ` ${p1.x.toFixed(1)},${p1.y.toFixed(1)}`
+  }
+  const last = points[count - 1]
+  if (last === undefined) return d
+  return `${d} L ${last.x.toFixed(1)},${baseline.toFixed(1)} L ${first.x.toFixed(1)},${baseline.toFixed(1)} Z`
+}
+
+/**
+ * Smooth multi-series curve chart of `series[i].values[j]` for `days[j]` —
+ * one monotone-smooth curve per model with a faint under-fill and a dot on
+ * every day that saw usage (today emphasized).
+ */
+export function renderSmoothLineSVG(options: SmoothLineOptions): string {
   const width = options.width ?? 860
   const height = options.height ?? 320
   const padLeft = 64
@@ -91,19 +153,19 @@ export function renderDailyBarsSVG(options: DailyBarsOptions): string {
   const series = options.series
   const n = days.length
 
-  const stackCount = Math.min(...[days.length, ...series.map(s => s.values.length)])
+  const pointCount = Math.min(...[days.length, ...series.map(s => s.values.length)])
   const dayTotal: number[] = []
-  for (let j = 0; j < stackCount; j++) {
+  for (let j = 0; j < pointCount; j++) {
     let sum = 0
     for (const s of series) sum += s.values[j] ?? 0
     dayTotal.push(sum)
   }
   const yMax = niceCeil(Math.max(...dayTotal, 0) * 1.08)
 
-  const band = plotW / Math.max(1, n)
-  const barW = Math.max(2, Math.min(band * 0.62, 48))
-  const xAt = (j: number): number => padLeft + band * j + band / 2
+  const xAt = (j: number): number =>
+    pointCount <= 1 ? padLeft + plotW / 2 : padLeft + (j / (pointCount - 1)) * plotW
   const yAt = (v: number): number => padTop + plotH * (1 - v / yMax)
+  const baseline = yAt(0)
 
   const parts: string[] = []
   parts.push(
@@ -140,25 +202,28 @@ export function renderDailyBarsSVG(options: DailyBarsOptions): string {
     }
   }
 
-  // One column per day, stacked bottom-up per series. Tiny but non-zero
-  // segments clamp to a 1px sliver so they stay hoverable.
-  for (let j = 0; j < stackCount; j++) {
-    const isToday = j === stackCount - 1
-    let cumulative = 0
-    for (let i = 0; i < series.length; i++) {
-      const s = series[i]
-      if (s === undefined) continue
+  // Per-series: faint under-fill path, stroked curve, usage dots.
+  for (let i = 0; i < series.length; i++) {
+    const s = series[i]
+    if (s === undefined) continue
+    const color = colorFor(i)
+    const points = s.values.slice(0, pointCount).map((v, j) => ({ x: xAt(j), y: yAt(v) }))
+    const d = smoothPath(points, baseline)
+    if (d !== '') {
+      parts.push(`<path d="${d}" fill="${color}" fill-opacity="0.12" stroke="none"/>`)
+      parts.push(
+        `<path d="${d}" fill="none" stroke="${color}" stroke-width="2" ` +
+          `stroke-linecap="round" stroke-linejoin="round"><title>${escapeXml(s.label)}</title></path>`,
+      )
+    }
+    for (let j = 0; j < pointCount; j++) {
       const v = s.values[j] ?? 0
       if (v <= 0) continue
-      const yBottom = yAt(cumulative)
-      cumulative += v
-      const yTop = yAt(cumulative)
-      const color = colorFor(i)
+      const isToday = j === pointCount - 1
       parts.push(
-        `<rect x="${(xAt(j) - barW / 2).toFixed(1)}" y="${yTop.toFixed(1)}" width="${barW.toFixed(1)}" ` +
-          `height="${Math.max(1, yBottom - yTop).toFixed(1)}" fill="${color}" fill-opacity="0.9"` +
-          `${isToday ? ` stroke="#e6e9f0" stroke-opacity="0.45"` : ''}>` +
-          `<title>${escapeXml(s.label)} · ${escapeXml(days[j] ?? '')}: ${escapeXml(formatTokens(v))}</title></rect>`,
+        `<circle cx="${xAt(j).toFixed(1)}" cy="${yAt(v).toFixed(1)}" r="${isToday ? 3 : 2}" ` +
+          `fill="${color}" stroke="#0f1115" stroke-width="${isToday ? 1.5 : 0.75}">` +
+          `<title>${escapeXml(s.label)} · ${escapeXml(days[j] ?? '')}: ${escapeXml(formatTokens(v))}</title></circle>`,
       )
     }
   }

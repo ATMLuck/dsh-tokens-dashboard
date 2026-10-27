@@ -5,8 +5,8 @@ import {
   formatInt,
   formatTokens,
   formatUsd,
-  renderDailyBarsSVG,
   renderDonutSVG,
+  renderSmoothLineSVG,
 } from '../src/charts.ts'
 import { renderDashboardBody } from '../src/dashboard.ts'
 import { buildDashboardData } from '../src/aggregate.ts'
@@ -29,8 +29,8 @@ test('colorFor cycles the palette deterministically', () => {
   assert.notEqual(colorFor(0), colorFor(1))
 })
 
-test('daily bar chart renders one stacked column per day with axes', () => {
-  const svg = renderDailyBarsSVG({
+test('smooth curve chart renders one monotone curve per series', () => {
+  const svg = renderSmoothLineSVG({
     days: ['2026-10-25', '2026-10-26', '2026-10-27'],
     series: [
       { label: 'a', values: [1, 2, 3] },
@@ -39,25 +39,26 @@ test('daily bar chart renders one stacked column per day with axes', () => {
   })
   assert.ok(svg.startsWith('<svg'))
   assert.ok(svg.endsWith('</svg>'))
-  // Non-zero segments only: a has 3, b has 1 → 4 rects; zero days leave gaps.
-  assert.equal((svg.match(/<rect /g) ?? []).length, 4)
-  // Areas are gone for good: no path/polygon shapes may come back.
-  assert.ok(!svg.includes('<path d="'))
-  assert.ok(!svg.includes('<polygon'))
-  // Today (last day) carries the emphasis stroke.
-  assert.ok(svg.includes('stroke="#e6e9f0"'))
-  assert.ok(svg.includes('10-25'))
+  // Per series: one faint under-fill path + one stroked curve.
+  assert.equal((svg.match(/fill-opacity="0.12"/g) ?? []).length, 2)
+  assert.equal((svg.match(/fill="none" stroke="/g) ?? []).length, 2)
+  // Cubic segments — the curve is actually smooth, not a polyline.
+  assert.ok(svg.includes(' C '))
+  // Usage dots on non-zero days only: a has 3, b has 1; today emphasized.
+  assert.equal((svg.match(/<circle /g) ?? []).length, 4)
+  assert.ok(svg.includes('r="3"'))
   assert.ok(svg.includes('10-27'))
 })
 
-test('single-day windows render the same stacked column shape', () => {
-  const svg = renderDailyBarsSVG({
+test('single-point windows render a lone emphasized dot', () => {
+  const svg = renderSmoothLineSVG({
     days: ['2026-10-27'],
     series: [{ label: 'a', values: [5] }],
   })
-  assert.equal((svg.match(/<rect /g) ?? []).length, 1)
-  assert.ok(!svg.includes('<polygon'))
+  // A single point has no curve; the dot carries the value.
   assert.ok(!svg.includes('<path d="'))
+  assert.equal((svg.match(/<circle /g) ?? []).length, 1)
+  assert.ok(svg.includes('r="3"'))
 })
 
 test('donut renders slices and a centered total; empty input renders placeholder', () => {
