@@ -1,21 +1,36 @@
 {
   "name": "dsh-tokens-dashboard",
   "version": "0.1.0",
-  "description": "DeepSeek Harness plugin: per-model daily token usage dashboard with summary cards, line chart and pie chart",
+  "description": "DeepSeek Harness plugin: per-model daily token usage dashboard as a settings page, with summary cards, line chart and pie chart",
   "type": "module",
   "main": "src/index.ts",
   "license": "MIT",
   "files": [
     "src",
+    "lib",
+    "scripts/build-client.mjs",
     "cordis.patch.yml"
   ],
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    }
+  },
   "scripts": {
-    "test": "node --test tests/aggregate.test.ts tests/charts.test.ts tests/dashboard-server.test.ts tests/live-dashboard.test.ts tests/usage-store.test.ts",
+    "build:client": "node scripts/build-client.mjs",
+    "prepare": "node scripts/build-client.mjs",
+    "test": "node --test tests/aggregate.test.ts tests/charts.test.ts tests/usage-store.test.ts tests/web-routes.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
     }
   },
   "peerDependencies": {
@@ -25,10 +40,15 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.5",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.0.1-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots": "^0.0.1-rc.1",
     "@deepseek-ai/dsh-session": "*",
     "@deepseek-ai/dsh-tools": "^0.0.1-rc.1",
     "@deepseek-ai/schemastery": "^3.18.5",
     "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "esbuild": "^0.25.0",
     "typescript": "^5.9.0"
   }
 }

@@ -8,7 +8,7 @@ import {
   renderDonutSVG,
   renderStackedAreaSVG,
 } from '../src/charts.ts'
-import { renderDashboardHTML } from '../src/dashboard.ts'
+import { renderDashboardBody } from '../src/dashboard.ts'
 import { buildDashboardData } from '../src/aggregate.ts'
 
 const NOON = new Date(2026, 9, 27, 12, 0, 0, 0).getTime()
@@ -75,7 +75,7 @@ test('donut renders slices and a centered total; empty input renders placeholder
   assert.ok(allZero.includes('暂无数据'))
 })
 
-test('dashboard HTML embeds cards, charts and the model table', () => {
+test('dashboard body embeds scoped styles, charts and the model table', () => {
   const record = {
     ts: NOON,
     provider: 'deepseek',
@@ -90,22 +90,24 @@ test('dashboard HTML embeds cards, charts and the model table', () => {
     chartDays: 3,
     now: NOON,
   })
-  const html = renderDashboardHTML(data)
-  assert.ok(html.startsWith('<!doctype html>'))
-  assert.ok(html.includes('模型用量仪表盘'))
+  const html = renderDashboardBody(data)
+  assert.ok(html.startsWith('<style>'))
+  assert.ok(html.includes('class="td-dashboard"'))
   assert.ok(html.includes('今日'))
   assert.ok(html.includes('每日 token 用量'))
   assert.ok(html.includes('模型占比 · tokens'))
   assert.ok(html.includes('模型占比 · 费用'))
   assert.ok(html.includes('deepseek/deepseek-chat'))
   assert.ok(html.includes('近 3 天'))
+  // The host app owns re-rendering; the fragment must stay script-free.
+  assert.ok(!html.includes('<script'))
   // Model ids are HTML-escaped if they ever contain markup.
   const sneaky = buildDashboardData(
     [{ ...record, provider: '<img>', model: 'x"onerror' }],
     {},
     { chartDays: 1, now: NOON },
   )
-  const sneakyHtml = renderDashboardHTML(sneaky)
+  const sneakyHtml = renderDashboardBody(sneaky)
   assert.ok(!sneakyHtml.includes('<img>'))
   assert.ok(sneakyHtml.includes('&lt;img&gt;'))
 })

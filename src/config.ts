@@ -3,19 +3,10 @@ import Schema from '@deepseek-ai/schemastery'
 import type { PricingMap } from './types.ts'
 
 export interface PluginConfig {
-  /** Directory for the usage log and the generated dashboard HTML. */
+  /** Directory for the usage log. */
   dataDir?: string
-  /** Trailing window of the dashboard line chart, in local days. */
+  /** Default trailing window of the dashboard line chart, in local days. */
   chartDays: number
-  /**
-   * Serve the live dashboard on 127.0.0.1 so the DSH sidebar browser pane
-   * can embed it (recommended). The `/usage` reply links to it.
-   */
-  dashboardServer: boolean
-  /** Loopback port for the dashboard server; 0 picks a free one. */
-  dashboardPort: number
-  /** Additionally open the system browser after `/usage` (off by default). */
-  openAfterRender: boolean
   /** USD per 1M tokens, keyed by exact model id or model id prefix. */
   pricing: PricingMap
 }
@@ -23,9 +14,6 @@ export interface PluginConfig {
 export const Config: Schema<PluginConfig> = Schema.object({
   dataDir: Schema.string().default(''),
   chartDays: Schema.number().min(1).max(365).default(30),
-  dashboardServer: Schema.boolean().default(true),
-  dashboardPort: Schema.number().min(0).max(65535).default(0),
-  openAfterRender: Schema.boolean().default(false),
   pricing: Schema.dict(
     Schema.object({
       input: Schema.number().required(),
