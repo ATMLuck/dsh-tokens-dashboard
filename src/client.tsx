@@ -342,7 +342,13 @@ function UsageSection(): ReactElement {
           style={{ left: hover.x, top: hover.chartTop, height: hover.chartHeight }}
         />
         <div className="td-daytip" style={tipStyle(hover)}>
-          <div className="td-tip-date">{data.lineDays[hover.dayIndex]}</div>
+          <div className="td-tip-date">
+            {data.lineDays[hover.dayIndex]}
+            {' · '}
+            {formatTokens(
+              data.lineSeries.reduce((sum, values) => sum + (values[hover.dayIndex] ?? 0), 0),
+            )}
+          </div>
           {data.lineModels.map((model, i) => (
             <div className="td-tip-row" key={model.key}>
               <span className="dot" style={{ background: colorFor(i) }} />
