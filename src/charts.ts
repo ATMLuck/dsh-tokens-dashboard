@@ -65,6 +65,34 @@ export interface LineSeries {
   values: readonly number[]
 }
 
+/** Geometry of the daily-usage SVG; the browser half maps cursor moves to
+ * day indices against these constants. */
+export const LINE_CHART_GEOMETRY = {
+  viewBoxWidth: 860,
+  viewBoxHeight: 320,
+  padLeft: 64,
+  padRight: 16,
+  padTop: 16,
+  padBottom: 28,
+} as const
+
+/** Day index under an SVG-space x coordinate, clamped into the window. */
+export function dayIndexFromSvgX(svgX: number, pointCount: number): number {
+  if (pointCount <= 1) return 0
+  const plotW =
+    LINE_CHART_GEOMETRY.viewBoxWidth - LINE_CHART_GEOMETRY.padLeft - LINE_CHART_GEOMETRY.padRight
+  const j = Math.round(((svgX - LINE_CHART_GEOMETRY.padLeft) / plotW) * (pointCount - 1))
+  return Math.max(0, Math.min(pointCount - 1, j))
+}
+
+/** SVG-space x of a day's center point. */
+export function dayCenterX(dayIndex: number, pointCount: number): number {
+  if (pointCount <= 1) return LINE_CHART_GEOMETRY.padLeft + (LINE_CHART_GEOMETRY.viewBoxWidth - LINE_CHART_GEOMETRY.padLeft - LINE_CHART_GEOMETRY.padRight) / 2
+  const plotW =
+    LINE_CHART_GEOMETRY.viewBoxWidth - LINE_CHART_GEOMETRY.padLeft - LINE_CHART_GEOMETRY.padRight
+  return LINE_CHART_GEOMETRY.padLeft + (dayIndex / (pointCount - 1)) * plotW
+}
+
 export interface SmoothLineOptions {
   days: readonly string[]
   series: readonly LineSeries[]
@@ -141,12 +169,12 @@ function smoothPath(points: readonly { x: number; y: number }[], baseline: numbe
  * every day that saw usage (today emphasized).
  */
 export function renderSmoothLineSVG(options: SmoothLineOptions): string {
-  const width = options.width ?? 860
-  const height = options.height ?? 320
-  const padLeft = 64
-  const padRight = 16
-  const padTop = 16
-  const padBottom = 28
+  const width = options.width ?? LINE_CHART_GEOMETRY.viewBoxWidth
+  const height = options.height ?? LINE_CHART_GEOMETRY.viewBoxHeight
+  const padLeft = LINE_CHART_GEOMETRY.padLeft
+  const padRight = LINE_CHART_GEOMETRY.padRight
+  const padTop = LINE_CHART_GEOMETRY.padTop
+  const padBottom = LINE_CHART_GEOMETRY.padBottom
   const plotW = Math.max(10, width - padLeft - padRight)
   const plotH = Math.max(10, height - padTop - padBottom)
   const days = options.days
@@ -169,7 +197,7 @@ export function renderSmoothLineSVG(options: SmoothLineOptions): string {
 
   const parts: string[] = []
   parts.push(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" ` +
+    `<svg class="td-linesvg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" ` +
       `role="img" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11">`,
   )
 
@@ -247,6 +275,15 @@ export interface DonutOptions {
  * Donut chart (no legend; the caller renders one with matching colors).
  * Zero or all-zero inputs render a placeholder ring.
  */
+/** Hover rules carried inside the donut SVG so the effect works anywhere the
+ * fragment is mounted: the hovered slice scales out slightly from the center
+ * and its share label appears on the slice. */
+const DONUT_HOVER_STYLE =
+  '.td-slice path { transition: transform 0.15s ease; }' +
+  '.td-slice:hover path { transform: scale(1.05); }' +
+  '.td-slice .td-slice-pct { visibility: hidden; font-weight: 700; }' +
+  '.td-slice:hover .td-slice-pct { visibility: visible; }'
+
 export function renderDonutSVG(options: DonutOptions): string {
   const size = options.size ?? 200
   const thickness = options.thickness ?? 26
@@ -259,7 +296,8 @@ export function renderDonutSVG(options: DonutOptions): string {
   const parts: string[] = []
   parts.push(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" role="img" ` +
-      `font-family="ui-monospace, SFMono-Regular, Menlo, monospace">`,
+      `font-family="ui-monospace, SFMono-Regular, Menlo, monospace">` +
+      `<style>${DONUT_HOVER_STYLE}</style>`,
   )
   if (total <= 0) {
     parts.push(
@@ -288,12 +326,23 @@ export function renderDonutSVG(options: DonutOptions): string {
     const xi0 = cx + inner * Math.cos(a0)
     const yi0 = cy + inner * Math.sin(a0)
     const percent = ((value / total) * 100).toFixed(1)
+    // Share label at the slice's mid-angle, revealed by the hover rule above.
+    const mid = (a0 + a1) / 2
+    const midR = (radius + inner) / 2
+    const pctX = cx + midR * Math.cos(mid)
+    const pctY = cy + midR * Math.sin(mid)
     parts.push(
-      `<path d="M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${radius} ${radius} 0 ${largeArc} 1 ` +
+      `<g class="td-slice">` +
+        `<path d="M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${radius} ${radius} 0 ${largeArc} 1 ` +
         `${x1.toFixed(2)} ${y1.toFixed(2)} L ${xi1.toFixed(2)} ${yi1.toFixed(2)} ` +
         `A ${inner} ${inner} 0 ${largeArc} 0 ${xi0.toFixed(2)} ${yi0.toFixed(2)} Z" ` +
-        `fill="${colorFor(index)}" fill-opacity="0.9">` +
-        `<title>${escapeXml(item.label)}: ${escapeXml(formatTokens(value))}（${percent}%）</title></path>`,
+        `fill="${colorFor(index)}" fill-opacity="0.9" ` +
+        `style="transform-origin:${cx}px ${cy}px">` +
+        `<title>${escapeXml(item.label)}: ${escapeXml(formatTokens(value))}（${percent}%）</title></path>` +
+        `<text class="td-slice-pct" x="${pctX.toFixed(1)}" y="${pctY.toFixed(1)}" ` +
+        `fill="#0f1115" text-anchor="middle" dominant-baseline="central" font-size="12" ` +
+        `pointer-events="none">${percent}%</text>` +
+        `</g>`,
     )
   })
   parts.push(

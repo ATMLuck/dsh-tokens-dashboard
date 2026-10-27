@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   colorFor,
+  dayCenterX,
+  dayIndexFromSvgX,
   formatInt,
   formatTokens,
   formatUsd,
@@ -61,19 +63,46 @@ test('single-point windows render a lone emphasized dot', () => {
   assert.ok(svg.includes('r="3"'))
 })
 
-test('donut renders slices and a centered total; empty input renders placeholder', () => {
+test('donut slices carry hover enlarge rules and share labels', () => {
   const donut = renderDonutSVG({
     items: [
       { label: 'a', value: 3 },
       { label: 'b', value: 1 },
     ],
   })
-  assert.equal((donut.match(/<path /g) ?? []).length, 2)
-  assert.ok(donut.includes('4</text>')) // centered total via formatTokens
+  // One hover group per slice, each scaling from the donut center.
+  assert.equal((donut.match(/class="td-slice"/g) ?? []).length, 2)
+  assert.ok(donut.includes('transform-origin:100px 100px'))
+  assert.ok(donut.includes('.td-slice:hover path { transform: scale(1.05); }'))
+  // Share labels ship hidden and are revealed by the hover rule.
+  assert.ok(donut.includes('75.0%'))
+  assert.ok(donut.includes('25.0%'))
+  assert.ok(donut.includes('pointer-events="none"'))
+  assert.ok(donut.includes('.td-slice .td-slice-pct { visibility: hidden;'))
+})
+
+test('cursor mapping helpers round-trip day indices', () => {
+  // Below/at the left pad clamps to day 0; beyond the right pad to the last.
+  assert.equal(dayIndexFromSvgX(-50, 30), 0)
+  assert.equal(dayIndexFromSvgX(64, 30), 0)
+  assert.equal(dayIndexFromSvgX(844, 30), 29)
+  assert.equal(dayIndexFromSvgX(9999, 30), 29)
+  // Plot mid maps to the middle day.
+  assert.equal(dayIndexFromSvgX(454, 30), 15)
+  // Day centers sit on the plot edges at the extremes.
+  assert.equal(dayCenterX(0, 30), 64)
+  assert.equal(dayCenterX(29, 30), 844)
+  // Single-day windows always resolve to day 0.
+  assert.equal(dayIndexFromSvgX(400, 1), 0)
+  assert.equal(dayCenterX(0, 1), 454)
+})
+
+test('empty donut renders the placeholder ring', () => {
   const empty = renderDonutSVG({ items: [] })
   assert.ok(empty.includes('暂无数据'))
   const allZero = renderDonutSVG({ items: [{ label: 'a', value: 0 }] })
   assert.ok(allZero.includes('暂无数据'))
+  assert.ok(!allZero.includes('class="td-slice"'))
 })
 
 test('dashboard body embeds scoped styles, charts and the model table', () => {

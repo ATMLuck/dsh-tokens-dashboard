@@ -155,7 +155,7 @@ export function renderDashboardBody(data: DashboardData): string {
     `<div class="td-dashboard">` +
     `<div class="meta">数据更新于 ${escapeHtml(generated)}${data.hasPricing ? '' : ' · 未配置定价，费用为 0'}</div>` +
     `<section class="cards">${cards}</section>` +
-    `<div class="panel"><h2>每日 token 用量（按模型）</h2>` +
+    `<div class="panel td-linepanel"><h2>每日 token 用量（按模型）</h2>` +
     `<div class="donut-wrap" style="align-items:flex-start">${lineChart}${lineLegend}</div></div>` +
     `<div class="panel"><h2>模型占比 · tokens</h2><div class="donut-wrap">${tokenDonut}${tokenLegend}</div></div>` +
     costSection +
