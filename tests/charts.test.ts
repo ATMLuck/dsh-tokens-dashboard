@@ -5,8 +5,8 @@ import {
   formatInt,
   formatTokens,
   formatUsd,
+  renderDailyBarsSVG,
   renderDonutSVG,
-  renderStackedAreaSVG,
 } from '../src/charts.ts'
 import { renderDashboardBody } from '../src/dashboard.ts'
 import { buildDashboardData } from '../src/aggregate.ts'
@@ -29,8 +29,8 @@ test('colorFor cycles the palette deterministically', () => {
   assert.notEqual(colorFor(0), colorFor(1))
 })
 
-test('stacked area chart renders valid paths and per-day markers', () => {
-  const svg = renderStackedAreaSVG({
+test('daily bar chart renders one stacked column per day with axes', () => {
+  const svg = renderDailyBarsSVG({
     days: ['2026-10-25', '2026-10-26', '2026-10-27'],
     series: [
       { label: 'a', values: [1, 2, 3] },
@@ -39,23 +39,23 @@ test('stacked area chart renders valid paths and per-day markers', () => {
   })
   assert.ok(svg.startsWith('<svg'))
   assert.ok(svg.endsWith('</svg>'))
-  // Areas must be <path d> — <polygon points> cannot carry M/L grammar and
-  // browsers drop the whole shape (regression guard).
-  assert.equal((svg.match(/<path d="/g) ?? []).length, 2)
+  // Non-zero segments only: a has 3, b has 1 → 4 rects; zero days leave gaps.
+  assert.equal((svg.match(/<rect /g) ?? []).length, 4)
+  // Areas are gone for good: no path/polygon shapes may come back.
+  assert.ok(!svg.includes('<path d="'))
   assert.ok(!svg.includes('<polygon'))
-  // One marker per non-zero day: a=[1,2,3] → 3, b=[0,1,0] → 1.
-  assert.equal((svg.match(/<circle /g) ?? []).length, 4)
-  // Today (last day) is emphasized with the larger radius.
-  assert.ok(svg.includes('r="3.5"'))
-  assert.ok(svg.includes('2026-10-27'))
+  // Today (last day) carries the emphasis stroke.
+  assert.ok(svg.includes('stroke="#e6e9f0"'))
+  assert.ok(svg.includes('10-25'))
+  assert.ok(svg.includes('10-27'))
 })
 
-test('single-day windows render stacked bars instead of degenerate areas', () => {
-  const svg = renderStackedAreaSVG({
+test('single-day windows render the same stacked column shape', () => {
+  const svg = renderDailyBarsSVG({
     days: ['2026-10-27'],
     series: [{ label: 'a', values: [5] }],
   })
-  assert.ok(svg.includes('<rect'))
+  assert.equal((svg.match(/<rect /g) ?? []).length, 1)
   assert.ok(!svg.includes('<polygon'))
   assert.ok(!svg.includes('<path d="'))
 })

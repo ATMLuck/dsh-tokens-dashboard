@@ -65,7 +65,7 @@ export interface StackedSeries {
   values: readonly number[]
 }
 
-export interface StackedAreaOptions {
+export interface DailyBarsOptions {
   days: readonly string[]
   series: readonly StackedSeries[]
   width?: number
@@ -73,11 +73,12 @@ export interface StackedAreaOptions {
 }
 
 /**
- * Stacked area chart of `series[i].values[j]` for `days[j]`, stacked in the
- * given order (bottom-up). Single-day windows render stacked bars instead of
- * degenerate zero-width areas.
+ * Stacked daily bar chart of `series[i].values[j]` for `days[j]`, stacked in
+ * the given order (bottom-up). Daily usage is discrete, so each day renders
+ * one column — zero days leave a gap instead of the misleading spikes a
+ * zero-filled area chart produces on sparse data.
  */
-export function renderStackedAreaSVG(options: StackedAreaOptions): string {
+export function renderDailyBarsSVG(options: DailyBarsOptions): string {
   const width = options.width ?? 860
   const height = options.height ?? 320
   const padLeft = 64
@@ -99,8 +100,9 @@ export function renderStackedAreaSVG(options: StackedAreaOptions): string {
   }
   const yMax = niceCeil(Math.max(...dayTotal, 0) * 1.08)
 
-  const xAt = (j: number): number =>
-    n <= 1 ? padLeft + plotW / 2 : padLeft + (j / (n - 1)) * plotW
+  const band = plotW / Math.max(1, n)
+  const barW = Math.max(2, Math.min(band * 0.62, 48))
+  const xAt = (j: number): number => padLeft + band * j + band / 2
   const yAt = (v: number): number => padTop + plotH * (1 - v / yMax)
 
   const parts: string[] = []
@@ -138,58 +140,25 @@ export function renderStackedAreaSVG(options: StackedAreaOptions): string {
     }
   }
 
-  // Stacked areas (or bars for a single-day window).
-  let cumulative = new Array<number>(stackCount).fill(0)
-  const stackTops: number[][] = []
-  for (let i = 0; i < series.length; i++) {
-    const s = series[i]
-    if (s === undefined) continue
-    const color = colorFor(i)
-    const lower = [...cumulative]
-    const upper = s.values.map((v, j) => (lower[j] ?? 0) + (v ?? 0))
-    cumulative = upper
-    stackTops.push(upper)
-    if (n === 1) {
-      const barW = Math.min(48, plotW / 2)
-      const x0 = xAt(0) - barW / 2
-      const yLow = yAt(lower[0] ?? 0)
-      const yUp = yAt(upper[0] ?? 0)
-      parts.push(
-        `<rect x="${x0.toFixed(1)}" y="${yUp.toFixed(1)}" width="${barW.toFixed(1)}" ` +
-          `height="${Math.max(0, yLow - yUp).toFixed(1)}" fill="${color}" fill-opacity="0.85">` +
-          `<title>${escapeXml(s.label)} · ${escapeXml(days[0] ?? '')}: ${escapeXml(formatTokens(s.values[0] ?? 0))}</title></rect>`,
-      )
-    } else if (n > 1) {
-      // <path d>, not <polygon points>: the M/L grammar is invalid inside
-      // the points attribute and browsers drop the whole shape.
-      const top = upper.map((v, j) => `${xAt(j).toFixed(1)},${yAt(v).toFixed(1)}`).join(' L ')
-      const bottom = lower
-        .map((v, j) => `${xAt(j).toFixed(1)},${yAt(v).toFixed(1)}`)
-        .reverse()
-        .join(' L ')
-      parts.push(
-        `<path d="M ${top} L ${bottom} Z" fill="${color}" fill-opacity="0.85">` +
-          `<title>${escapeXml(s.label)}</title></path>`,
-      )
-    }
-  }
-
-  // Per-day markers on each layer's top edge (today emphasized) so single
-  // days — especially the trailing one — read as points, not just edges.
-  for (let i = 0; i < series.length; i++) {
-    const s = series[i]
-    const tops = stackTops[i]
-    if (s === undefined || tops === undefined) continue
-    const color = colorFor(i)
-    for (let j = 0; j < stackCount; j++) {
+  // One column per day, stacked bottom-up per series. Tiny but non-zero
+  // segments clamp to a 1px sliver so they stay hoverable.
+  for (let j = 0; j < stackCount; j++) {
+    const isToday = j === stackCount - 1
+    let cumulative = 0
+    for (let i = 0; i < series.length; i++) {
+      const s = series[i]
+      if (s === undefined) continue
       const v = s.values[j] ?? 0
       if (v <= 0) continue
-      const isToday = j === stackCount - 1
-      const radius = isToday ? 3.5 : 2
+      const yBottom = yAt(cumulative)
+      cumulative += v
+      const yTop = yAt(cumulative)
+      const color = colorFor(i)
       parts.push(
-        `<circle cx="${xAt(j).toFixed(1)}" cy="${yAt(tops[j] ?? 0).toFixed(1)}" r="${radius}" ` +
-          `fill="${color}" stroke="#0f1115" stroke-width="${isToday ? 1.5 : 1}">` +
-          `<title>${escapeXml(s.label)} · ${escapeXml(days[j] ?? '')}: ${escapeXml(formatTokens(v))}</title></circle>`,
+        `<rect x="${(xAt(j) - barW / 2).toFixed(1)}" y="${yTop.toFixed(1)}" width="${barW.toFixed(1)}" ` +
+          `height="${Math.max(1, yBottom - yTop).toFixed(1)}" fill="${color}" fill-opacity="0.9"` +
+          `${isToday ? ` stroke="#e6e9f0" stroke-opacity="0.45"` : ''}>` +
+          `<title>${escapeXml(s.label)} · ${escapeXml(days[j] ?? '')}: ${escapeXml(formatTokens(v))}</title></rect>`,
       )
     }
   }

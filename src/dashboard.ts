@@ -4,8 +4,8 @@ import {
   formatInt,
   formatTokens,
   formatUsd,
+  renderDailyBarsSVG,
   renderDonutSVG,
-  renderStackedAreaSVG,
 } from './charts.ts'
 
 function escapeHtml(text: string): string {
@@ -85,7 +85,7 @@ export function renderDashboardBody(data: DashboardData): string {
   const cards = data.cards.map(card => cardHtml(card, data.hasPricing)).join('')
 
   const lineChart = hasModels
-    ? renderStackedAreaSVG({
+    ? renderDailyBarsSVG({
         days: data.lineDays,
         series: data.lineModels.map((model, index) => ({
           label: model.key,
