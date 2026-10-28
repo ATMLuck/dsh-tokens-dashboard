@@ -11,7 +11,7 @@
  * maps the cursor to a day index through the exported chart geometry, and
  * the donut reads data-label/data-value/data-pct off the hovered slice.
  */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, ReactElement } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 // Type-only: browser runtime services — declares ctx.slots (SlotRegistry).
@@ -33,6 +33,8 @@ import { shiftDayKey } from './days.ts'
 import type { DashboardData } from './aggregate.ts'
 import type { HeatmapCell } from './types.ts'
 import { DASHBOARD_STYLE, renderDashboardCharts, renderDashboardHead } from './dashboard.ts'
+import { snapshotChartsFragment, startChartsMorph } from './morph.ts'
+import type { ChartsSnapshot } from './morph.ts'
 
 export const name = 'tokens-dashboard-client'
 
@@ -234,6 +236,9 @@ function UsageSection(): ReactElement {
    * the hover loss it causes) while a refresh returns unchanged numbers. */
   const headSigRef = useRef('')
   const chartsSigRef = useRef('')
+  /** On-screen chart shape before the pending fragment swap; undefined means
+   * no morph is scheduled (null = first paint → entrance animation). */
+  const pendingMorphRef = useRef<ChartsSnapshot | null | undefined>(undefined)
 
   useEffect(() => {
     let cancelled = false
@@ -254,6 +259,10 @@ function UsageSection(): ReactElement {
         const chartsSig = JSON.stringify([next.lineDays, next.lineSeries, next.hasPricing])
         if (chartsSig !== chartsSigRef.current) {
           chartsSigRef.current = chartsSig
+          // Read the on-screen shape before React swaps the fragment so the
+          // new charts can tween from it instead of hard-cutting.
+          pendingMorphRef.current =
+            fragRef.current !== null ? snapshotChartsFragment(fragRef.current) : null
           setChartsHtml(renderDashboardCharts(next))
         }
         setUpdatedAt(next.generatedAt)
@@ -272,6 +281,17 @@ function UsageSection(): ReactElement {
       window.clearInterval(timer)
     }
   }, [days])
+
+  // Morph the charts whenever the fragment actually swaps. useLayoutEffect so
+  // the "from" shape lands before the browser paints — a plain effect would
+  // let the final state flash for one frame first.
+  useLayoutEffect(() => {
+    const frag = fragRef.current
+    if (frag === null || chartsHtml === '' || pendingMorphRef.current === undefined) return
+    const snapshot = pendingMorphRef.current
+    pendingMorphRef.current = undefined
+    return startChartsMorph(frag, snapshot)
+  }, [chartsHtml])
 
   const moveDayTip = (e: React.MouseEvent<HTMLDivElement>): void => {
     const frag = fragRef.current

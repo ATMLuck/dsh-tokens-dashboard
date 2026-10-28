@@ -4,13 +4,18 @@ import {
   colorFor,
   dayCenterX,
   dayIndexFromSvgX,
+  donutSlicePathD,
   formatInt,
   formatTokens,
   formatUsd,
   formatWan,
+  parseFormattedTokens,
+  parseLinePathPoints,
   renderDonutSVG,
   renderHeatmapSVG,
   renderSmoothLineSVG,
+  sampleCurveY,
+  smoothPath,
 } from '../src/charts.ts'
 import { DASHBOARD_STYLE, renderDashboardCharts, renderDashboardHead } from '../src/dashboard.ts'
 import { buildDashboardData } from '../src/aggregate.ts'
@@ -166,6 +171,73 @@ test('empty donut renders the placeholder ring', () => {
   const allZero = renderDonutSVG({ items: [{ label: 'a', value: 0 }] })
   assert.ok(allZero.includes('暂无数据'))
   assert.ok(!allZero.includes('class="td-slice"'))
+})
+
+test('line path parse/sample helpers round-trip the rendered curve', () => {
+  const points = [
+    { x: 64, y: 292 },
+    { x: 454, y: 150 },
+    { x: 844, y: 40 },
+  ]
+  const parsed = parseLinePathPoints(smoothPath(points, 292))
+  assert.equal(parsed.length, 3)
+  parsed.forEach((p, i) => {
+    const source = points[i]
+    assert.ok(source !== undefined)
+    assert.ok(Math.abs(p.x - source.x) < 0.11)
+    assert.ok(Math.abs(p.y - source.y) < 0.11)
+  })
+  // Sampling inside a segment interpolates; outside clamps to the ends.
+  const mid = sampleCurveY(parsed, 454)
+  assert.ok(Math.abs(mid - 150) < 0.2)
+  assert.equal(sampleCurveY(parsed, 0), 292)
+  assert.equal(sampleCurveY(parsed, 9999), 40)
+  // Not a renderer-emitted d string → no anchors to morph from.
+  assert.deepEqual(parseLinePathPoints('M 1,2 L 3,4'), [])
+})
+
+test('parseFormattedTokens inverts the axis label format', () => {
+  assert.equal(parseFormattedTokens('0'), 0)
+  assert.equal(parseFormattedTokens('1.2K'), 1200)
+  assert.equal(parseFormattedTokens('500.0K'), 500_000)
+  assert.equal(parseFormattedTokens('4.50M'), 4_500_000)
+  assert.equal(parseFormattedTokens('2.30B'), 2_300_000_000)
+  assert.equal(parseFormattedTokens(''), 0)
+})
+
+test('donut slice path helper matches the rendered slices', () => {
+  const donut = renderDonutSVG({ items: [{ label: 'a', value: 3 }] })
+  // A 100% slice spans the whole ring from 12 o'clock (full-circle SVG arcs
+  // would degenerate, so the helper clamps a hair-thin gap).
+  const d = donutSlicePathD(100, 100, 74, 48, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2)
+  assert.ok(d.startsWith('M 100.00 26.00'))
+  assert.ok(donut.includes(d))
+  assert.ok(donut.includes('data-total="3"'))
+  assert.equal(donutSlicePathD(100, 100, 74, 48, 0, 0), '')
+})
+
+test('charts expose stable hooks for client-side morphing', () => {
+  const record = {
+    ts: NOON,
+    provider: 'deepseek',
+    model: 'deepseek-chat',
+    inputTokens: 1000,
+    outputTokens: 500,
+    cacheReadTokens: 200,
+    cacheWriteTokens: 300,
+    reasoningTokens: 0,
+  }
+  const html = renderDashboardCharts(
+    buildDashboardData([record], { 'deepseek-chat': { input: 1, output: 2 } }, {
+      chartDays: 3,
+      now: NOON,
+    }),
+  )
+  assert.ok(html.includes('class="td-linesvg"'))
+  assert.ok(html.includes('<g class="td-line-series" data-series="deepseek/deepseek-chat">'))
+  assert.ok(html.includes('<svg class="td-donut" data-unit="tokens"'))
+  assert.ok(html.includes('<svg class="td-donut" data-unit="费用"'))
+  assert.ok(html.includes('class="td-donut-total" data-total="2000"'))
 })
 
 test('dashboard body embeds scoped styles, charts and the model table', () => {

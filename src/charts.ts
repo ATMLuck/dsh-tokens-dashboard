@@ -106,6 +106,12 @@ export function dayCenterX(dayIndex: number, pointCount: number): number {
   return LINE_CHART_GEOMETRY.padLeft + (dayIndex / (pointCount - 1)) * plotW
 }
 
+/** One plotted point in SVG-space pixel coordinates. */
+export interface CurvePoint {
+  x: number
+  y: number
+}
+
 export interface SmoothLineOptions {
   days: readonly string[]
   series: readonly LineSeries[]
@@ -155,7 +161,10 @@ function monotoneTangents(points: readonly { x: number; y: number }[]): number[]
   return m
 }
 
-function smoothPath(points: readonly { x: number; y: number }[], baseline: number): string {
+/** Smooth monotone-cubic path through `points`, closed down to `baseline` —
+ * the exact string the line chart renders, exported so the client can rebuild
+ * intermediate frames while morphing between two data windows. */
+export function smoothPath(points: readonly CurvePoint[], baseline: number): string {
   const count = points.length
   const first = points[0]
   if (count < 2 || first === undefined) return ''
@@ -174,6 +183,54 @@ function smoothPath(points: readonly { x: number; y: number }[], baseline: numbe
   const last = points[count - 1]
   if (last === undefined) return d
   return `${d} L ${last.x.toFixed(1)},${baseline.toFixed(1)} L ${first.x.toFixed(1)},${baseline.toFixed(1)} Z`
+}
+
+/**
+ * Anchor points of a curve previously emitted by smoothPath: the M point
+ * plus the endpoint of every C segment (control points and the baseline
+ * corners are not anchors). The client morph reads a chart's on-screen
+ * shape by parsing these back out of the live SVG before a re-render.
+ */
+export function parseLinePathPoints(d: string): CurvePoint[] {
+  const pairs = [...d.matchAll(/(-?[\d.]+),(-?[\d.]+)/g)]
+  // M + 3 pairs per C segment + 2 baseline corners = 3n pairs for n anchors.
+  if (pairs.length === 0 || pairs.length % 3 !== 0) return []
+  const points: CurvePoint[] = []
+  for (let k = 0; k * 3 < pairs.length; k++) {
+    const match = pairs[k * 3]
+    if (match === undefined) break
+    points.push({ x: Number.parseFloat(match[1] ?? '0'), y: Number.parseFloat(match[2] ?? '0') })
+  }
+  return points
+}
+
+/** Piecewise-linear y of a parsed curve at svg-space x, clamped at the ends. */
+export function sampleCurveY(points: readonly CurvePoint[], x: number): number {
+  const first = points[0]
+  const last = points[points.length - 1]
+  if (first === undefined || last === undefined) return 0
+  if (x <= first.x) return first.y
+  if (x >= last.x) return last.y
+  for (let j = 0; j + 1 < points.length; j++) {
+    const a = points[j]
+    const b = points[j + 1]
+    if (a === undefined || b === undefined) continue
+    if (x >= a.x && x <= b.x) {
+      const f = b.x === a.x ? 0 : (x - a.x) / (b.x - a.x)
+      return a.y + (b.y - a.y) * f
+    }
+  }
+  return last.y
+}
+
+/** Inverse of formatTokens for values already written into axis labels:
+ * '1.50M' → 1.5e6, '500.0K' → 5e5, '0' → 0. */
+export function parseFormattedTokens(text: string): number {
+  const match = /^(-?\d+(?:\.\d+)?)\s*([KMB])?$/.exec(text.trim())
+  if (match === null) return 0
+  const n = Number.parseFloat(match[1] ?? '0')
+  const scale = match[2] === 'K' ? 1e3 : match[2] === 'M' ? 1e6 : match[2] === 'B' ? 1e9 : 1
+  return n * scale
 }
 
 /**
@@ -243,11 +300,13 @@ export function renderSmoothLineSVG(options: SmoothLineOptions): string {
     }
   }
 
-  // Per-series: faint under-fill path, stroked curve, usage dots.
+  // Per-series: faint under-fill path, stroked curve, usage dots. The group
+  // wrapper lets the client morph each curve by label when the window changes.
   for (let i = 0; i < series.length; i++) {
     const s = series[i]
     if (s === undefined) continue
     const color = colorFor(i)
+    parts.push(`<g class="td-line-series" data-series="${escapeXml(s.label)}">`)
     const points = s.values.slice(0, pointCount).map((v, j) => ({ x: xAt(j), y: yAt(v) }))
     const d = smoothPath(points, baseline)
     if (d !== '') {
@@ -268,6 +327,7 @@ export function renderSmoothLineSVG(options: SmoothLineOptions): string {
           `fill="${color}" stroke="#0f1115" stroke-width="${isToday ? 1.5 : 0.75}"/>`,
       )
     }
+    parts.push('</g>')
   }
 
   parts.push('</svg>')
@@ -289,6 +349,41 @@ export interface DonutOptions {
   unit?: string
 }
 
+/** Renderer defaults the client morph mirrors when rebuilding slice arcs. */
+export const DONUT_DEFAULT_SIZE = 200
+export const DONUT_DEFAULT_THICKNESS = 26
+
+/** One donut slice as an SVG annular-sector path; sweep ≤ 0 yields ''. */
+export function donutSlicePathD(
+  cx: number,
+  cy: number,
+  radius: number,
+  inner: number,
+  a0: number,
+  a1: number,
+): string {
+  const sweep = a1 - a0
+  if (!(sweep > 0)) return ''
+  // A full-circle arc (single-slice donut) degenerates in SVG when both
+  // endpoints coincide; leave a hair-thin gap so the ring still renders.
+  const clampedSweep = Math.min(sweep, Math.PI * 2 - 1e-4)
+  const a1c = a0 + clampedSweep
+  const largeArc = clampedSweep > Math.PI ? 1 : 0
+  const x0 = cx + radius * Math.cos(a0)
+  const y0 = cy + radius * Math.sin(a0)
+  const x1 = cx + radius * Math.cos(a1c)
+  const y1 = cy + radius * Math.sin(a1c)
+  const xi1 = cx + inner * Math.cos(a1c)
+  const yi1 = cy + inner * Math.sin(a1c)
+  const xi0 = cx + inner * Math.cos(a0)
+  const yi0 = cy + inner * Math.sin(a0)
+  return (
+    `M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${radius.toFixed(2)} ${radius.toFixed(2)} 0 ${largeArc} 1 ` +
+    `${x1.toFixed(2)} ${y1.toFixed(2)} L ${xi1.toFixed(2)} ${yi1.toFixed(2)} ` +
+    `A ${inner.toFixed(2)} ${inner.toFixed(2)} 0 ${largeArc} 0 ${xi0.toFixed(2)} ${yi0.toFixed(2)} Z`
+  )
+}
+
 /**
  * Donut chart (no legend; the caller renders one with matching colors).
  * Zero or all-zero inputs render a placeholder ring. Each slice carries
@@ -302,8 +397,8 @@ const DONUT_HOVER_STYLE =
   '.td-slice:hover path { transform: scale(1.05); }'
 
 export function renderDonutSVG(options: DonutOptions): string {
-  const size = options.size ?? 200
-  const thickness = options.thickness ?? 26
+  const size = options.size ?? DONUT_DEFAULT_SIZE
+  const thickness = options.thickness ?? DONUT_DEFAULT_THICKNESS
   const format = options.formatValue ?? formatTokens
   const unit = options.unit ?? 'tokens'
   const cx = size / 2
@@ -313,8 +408,10 @@ export function renderDonutSVG(options: DonutOptions): string {
   const total = options.items.reduce((sum, item) => sum + (item.value > 0 ? item.value : 0), 0)
 
   const parts: string[] = []
+  // class/data-unit/data-total: stable hooks for the client-side morph.
   parts.push(
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${size} ${size}" role="img" ` +
+    `<svg class="td-donut" data-unit="${escapeXml(unit)}" xmlns="http://www.w3.org/2000/svg" ` +
+      `viewBox="0 0 ${size} ${size}" role="img" ` +
       `font-family="ui-monospace, SFMono-Regular, Menlo, monospace">` +
       `<style>${DONUT_HOVER_STYLE}</style>`,
   )
@@ -331,34 +428,22 @@ export function renderDonutSVG(options: DonutOptions): string {
   options.items.forEach((item, index) => {
     const value = item.value > 0 ? item.value : 0
     if (value === 0) return
-    const sweep = (value / total) * Math.PI * 2
     const a0 = angle
-    const a1 = angle + sweep
+    const a1 = angle + (value / total) * Math.PI * 2
     angle = a1
-    const largeArc = sweep > Math.PI ? 1 : 0
-    const x0 = cx + radius * Math.cos(a0)
-    const y0 = cy + radius * Math.sin(a0)
-    const x1 = cx + radius * Math.cos(a1)
-    const y1 = cy + radius * Math.sin(a1)
-    const xi1 = cx + inner * Math.cos(a1)
-    const yi1 = cy + inner * Math.sin(a1)
-    const xi0 = cx + inner * Math.cos(a0)
-    const yi0 = cy + inner * Math.sin(a0)
     const percent = ((value / total) * 100).toFixed(1)
     parts.push(
       `<g class="td-slice" data-label="${escapeXml(item.label)}" ` +
         `data-value="${escapeXml(format(value))}" data-pct="${percent}" data-index="${index}">` +
-        `<path d="M ${x0.toFixed(2)} ${y0.toFixed(2)} A ${radius} ${radius} 0 ${largeArc} 1 ` +
-        `${x1.toFixed(2)} ${y1.toFixed(2)} L ${xi1.toFixed(2)} ${yi1.toFixed(2)} ` +
-        `A ${inner} ${inner} 0 ${largeArc} 0 ${xi0.toFixed(2)} ${yi0.toFixed(2)} Z" ` +
+        `<path d="${donutSlicePathD(cx, cy, radius, inner, a0, a1)}" ` +
         `fill="${colorFor(index)}" fill-opacity="0.9" ` +
         `style="transform-origin:${cx}px ${cy}px"/>` +
         `</g>`,
     )
   })
   parts.push(
-    `<text x="${cx}" y="${cy - 2}" fill="#e6e9f0" text-anchor="middle" font-size="13" ` +
-      `font-weight="600">${escapeXml(format(total))}</text>`,
+    `<text class="td-donut-total" data-total="${total}" x="${cx}" y="${cy - 2}" fill="#e6e9f0" ` +
+      `text-anchor="middle" font-size="13" font-weight="600">${escapeXml(format(total))}</text>`,
   )
   parts.push(
     `<text x="${cx}" y="${cy + 14}" fill="#8b93a7" text-anchor="middle" font-size="10">${escapeXml(unit)}</text>`,
