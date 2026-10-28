@@ -1,5 +1,10 @@
 # dsh-tokens-dashboard
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-24.9%2B-339933.svg)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg)](https://www.typescriptlang.org)
+[![Platform: DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-plugin-4d6bfe.svg)](https://github.com/deepseek-ai/deepseek-harness)
+
 [English](docs/README.en.md) | 简体中文
 
 DeepSeek Harness (DSH) 的**模型用量仪表盘**插件：自动记录各模型每次请求的 token 消耗，并在 **DSH 设置页中新增一个「模型用量」标签页**，展示汇总卡片、各模型的平滑每日用量曲线图和占比环形图（含费用估算）。
@@ -88,3 +93,7 @@ npm run build:client # 单独重建浏览器半侧
 - 设置页仅 web profile 可见；headless 下可用 `usage_report` 工具查询。
 - 持久化暂用插件自有 JSONL；如需迁移可改走官方 `ctx.storage` 领域 KV。
 - `--legacy-peer-deps`：settings/slots 类型包的 peer 链伸入未发布的 host 内部包，本地 `npm install` 需带该 flag（README 与 package-lock 已按此固定）。
+
+## 许可证
+
+[MIT](LICENSE) © ATMLuck

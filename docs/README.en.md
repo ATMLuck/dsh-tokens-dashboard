@@ -1,5 +1,10 @@
 # dsh-tokens-dashboard
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](../LICENSE)
+[![Node.js](https://img.shields.io/badge/node-24.9%2B-339933.svg)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg)](https://www.typescriptlang.org)
+[![Platform: DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-plugin-4d6bfe.svg)](https://github.com/deepseek-ai/deepseek-harness)
+
 [简体中文](../README.md) | English
 
 A **model usage dashboard** plugin for DeepSeek Harness (DSH): it automatically records the token consumption of every model request and adds a dedicated「模型用量」(Model Usage) tab to the **DSH settings page**, showing summary cards, smooth per-model daily usage curves and donut share charts (with cost estimation).
@@ -88,3 +93,7 @@ All usage data stays in a local JSONL file; the web route is served only by DSH'
 - The settings tab is only visible on web profiles; on headless, use the `usage_report` tool.
 - Persistence uses the plugin's own JSONL for now; migrating to the official `ctx.storage` domain KV is an option.
 - `--legacy-peer-deps`: the peer chain of the settings/slots type packages reaches into unpublished host internals, so a local `npm install` needs that flag (pinned in this README and package-lock).
+
+## License
+
+[MIT](../LICENSE) © ATMLuck
