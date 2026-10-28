@@ -1,7 +1,4 @@
-# AGENTS.md — dsh-tokens-dashboard 开发指南
-
-本文件面向在本仓库工作的 AI agent（及新会话的你自己）。目标是：任何新会话读完此文件后，
-能延续既有架构、代码风格、验证流程和提交规范继续开发 DSH 插件，而不需要重新踩坑。
+# AGENTS.md — dsh-tokens-dashboard 开发
 
 ## 1. 项目是什么
 
