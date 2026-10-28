@@ -1,4 +1,4 @@
-# 本地开发笔记 / 参考资料（不入库）
+# 参考资料
 dev-notes/
 
 # 依赖
@@ -27,5 +27,6 @@ temp/
 .vscode/
 !.vscode/extensions.json
 .DS_Store
+AGENTS.md
 Thumbs.db
 preview/

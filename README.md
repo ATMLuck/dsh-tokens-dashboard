@@ -1,6 +1,8 @@
 # dsh-tokens-dashboard
 
-DeepSeek Harness (DSH) 的**模型用量仪表盘**插件：自动记录各模型每次请求的 token 消耗，并在 **DSH 设置页中新增一个「模型用量」标签页**，展示汇总卡片、按模型堆叠的每日用量曲线图和占比饼图（含费用估算）。
+[English](docs/README.en.md) | 简体中文
+
+DeepSeek Harness (DSH) 的**模型用量仪表盘**插件：自动记录各模型每次请求的 token 消耗，并在 **DSH 设置页中新增一个「模型用量」标签页**，展示汇总卡片、各模型的平滑每日用量曲线图和占比环形图（含费用估算）。
 
 ## 功能
 
@@ -86,16 +88,3 @@ npm run build:client # 单独重建浏览器半侧
 - 设置页仅 web profile 可见；headless 下可用 `usage_report` 工具查询。
 - 持久化暂用插件自有 JSONL；如需迁移可改走官方 `ctx.storage` 领域 KV。
 - `--legacy-peer-deps`：settings/slots 类型包的 peer 链伸入未发布的 host 内部包，本地 `npm install` 需带该 flag（README 与 package-lock 已按此固定）。
-
-## 目录约定
-
-- `src/` — 插件源码（纯函数模块与 cordis 接线分离；`client.tsx` 为浏览器半侧入口）
-- `scripts/build-client.mjs` — 客户端 bundle 构建（esbuild → factory 格式）
-- `tests/` — node:test 单元测试
-- `dev-notes/` — 本地开发笔记与官方规范摘要（已 gitignore，不入库）
-
-## 参考资料
-
-- 官方仓库：<https://github.com/deepseek-ai/deepseek-harness>（`docs/` 为权威规范；设置页扩展见 `cookbook/adding-a-settings-card.zh.md` 与 `subsystems/slots.zh.md`）
-- 规范总结：`dev-notes/dsh-plugin-dev-spec.md`（本地）
-- 设计笔记：`dev-notes/design.md`（本地）
